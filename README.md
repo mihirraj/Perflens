@@ -16,7 +16,7 @@ No `-javaagent`, no external server, no database.
 
 ```xml
 <dependency>
-  <groupId>dev.perflens</groupId>
+  <groupId>io.github.mihirraj</groupId>
   <artifactId>perflens-spring-boot-starter</artifactId>
   <version>0.1.0-SNAPSHOT</version>
 </dependency>

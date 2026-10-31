@@ -4,12 +4,34 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>dev.perflens</groupId>
+    <groupId>io.github.mihirraj</groupId>
     <artifactId>perflens-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>PerfLens</name>
     <description>In-process performance advisor for Spring Boot: slow queries with params, hot methods with args, network issues, suggestions, embedded UI.</description>
+    <url>https://github.com/mihirraj/Perflens</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>mihirraj</id>
+            <name>Mihir Raj</name>
+            <url>https://github.com/mihirraj</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <url>https://github.com/mihirraj/Perflens</url>
+        <connection>scm:git:https://github.com/mihirraj/Perflens.git</connection>
+        <developerConnection>scm:git:https://github.com/mihirraj/Perflens.git</developerConnection>
+    </scm>
 
     <modules>
         <module>perflens-core</module>
@@ -40,17 +62,17 @@
                 <version>${datasource-proxy.version}</version>
             </dependency>
             <dependency>
-                <groupId>dev.perflens</groupId>
+                <groupId>io.github.mihirraj</groupId>
                 <artifactId>perflens-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>dev.perflens</groupId>
+                <groupId>io.github.mihirraj</groupId>
                 <artifactId>perflens-autoconfigure</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>dev.perflens</groupId>
+                <groupId>io.github.mihirraj</groupId>
                 <artifactId>perflens-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
