@@ -54,6 +54,27 @@ The demo shop has deliberate problems (N+1, slow self-join, `LOWER(col) LIKE '%x
 
 Argument and parameter values are rendered **without calling `toString()`**, because on JPA entities that can trigger lazy loading. Entities are shown as `Order{id=42}`, collections by size plus their first elements, and long strings are truncated.
 
+## Overhead (measured)
+
+`OverheadBenchmark` in the demo runs the same closed-loop workload (4 client threads, 15 s warm-up, 30 s measurement) with PerfLens off and on, alternating off/on/off/on. Measured on a Windows 11 laptop with JDK 24:
+
+| Setting | Throughput | CPU per request | p50 | p99 |
+|---|---|---|---|---|
+| PerfLens on (all collectors) | −9.6% | +10.5% (+0.086 ms) | +0.17 ms | +0.09 ms |
+| PerfLens on, JFR disabled | −12.7% | +11.3% (+0.09 ms) | +0.19 ms | +0.21 ms |
+
+How to read this:
+- **This workload is a deliberate worst case.** Requests hit an in-memory H2 database and cost only ~0.8 ms of CPU each, yet run ~40 SQL statements each (the demo's N+1), so per-statement instrumentation dominates.
+- **The cost is a fixed ~2–4 µs per instrumented operation** (JDBC statement, bean method call), not a percentage. A typical 10–100 ms request with tens of queries pays the same ~0.1–0.2 ms, i.e. well under 1%.
+- **JFR sampling is not where the cost goes.** Disabling it changes nothing measurable; the cost is in the JDBC proxy and method hooks, which are the next optimization target.
+
+Run it yourself:
+
+```bash
+./mvnw -pl perflens-demo test -Dtest=OverheadBenchmark -Dsurefire.failIfNoSpecifiedTests=false -Dbenchmark=true
+# compare variants: -Dbench.on=perflens.jfr.enabled=false
+```
+
 ## Privacy and safety
 
 PerfLens targets **dev and staging first**, so it captures real values by default:
