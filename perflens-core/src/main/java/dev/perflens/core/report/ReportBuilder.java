@@ -30,6 +30,10 @@ public final class ReportBuilder {
     public Map<String, Object> build() {
         List<Finding> findings = pl.findings();
         Map<String, Object> r = new LinkedHashMap<>();
+        Map<String, Object> meta = new LinkedHashMap<>(new java.util.TreeMap<>(pl.meta()));
+        meta.put("generatedAt", System.currentTimeMillis());
+        meta.put("observingSince", pl.resetAt());
+        r.put("meta", meta);
         r.put("overview", overview(findings));
         r.put("findings", findings);
         r.put("queries", queries());

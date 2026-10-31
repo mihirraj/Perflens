@@ -29,6 +29,7 @@ public final class PerfLens implements AutoCloseable, Guard.Target {
     private final long startedAt = System.currentTimeMillis();
     private volatile long resetAt = startedAt;
     private volatile boolean collecting = true;
+    private final Map<String, Object> meta = new java.util.concurrent.ConcurrentHashMap<>();
     private Guard guard;
 
     public PerfLens(PerfLensConfig config) {
@@ -114,6 +115,8 @@ public final class PerfLens implements AutoCloseable, Guard.Target {
     public HttpRegistry http() { return http; }
     public TraceRegistry traces() { return traces; }
     public JfrProfiler profiler() { return profiler; }
+    /** Application identity (name, version, git commit) recorded in reports and snapshots. */
+    public Map<String, Object> meta() { return meta; }
     public long startedAt() { return startedAt; }
     public long resetAt() { return resetAt; }
 }

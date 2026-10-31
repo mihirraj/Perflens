@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.perflens.autoconfigure.endpoint.PerfLensEndpoint;
 import dev.perflens.autoconfigure.endpoint.PerfLensSnapshots;
 import dev.perflens.autoconfigure.http.PerfLensClientObservationHandler;
+import dev.perflens.autoconfigure.http.PerfLensWebClientObservationHandler;
 import dev.perflens.autoconfigure.jdbc.PerfLensDataSourcePostProcessor;
 import dev.perflens.autoconfigure.method.PerfLensMethodAdvisor;
 import dev.perflens.autoconfigure.web.PerfLensServletFilter;
@@ -24,6 +25,8 @@ import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.endpoint.condition.ConditionalOnAvailableEndpoint;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.info.BuildProperties;
+import org.springframework.boot.info.GitProperties;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationListener;
@@ -54,11 +57,20 @@ public class PerfLensAutoConfiguration {
 
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean
-    public PerfLens perfLens(PerfLensConfig config, BeanFactory beanFactory) {
+    public PerfLens perfLens(PerfLensConfig config, BeanFactory beanFactory, Environment env,
+                             ObjectProvider<GitProperties> git, ObjectProvider<BuildProperties> build) {
         if (config.getBasePackages().isEmpty()) {
             config.setBasePackages(new ArrayList<>(resolveBasePackages(beanFactory)));
         }
         PerfLens pl = new PerfLens(config);
+        // identity recorded in every report/snapshot, so a regression can be tied to a deploy
+        pl.meta().put("application", env.getProperty("spring.application.name", "application"));
+        build.ifAvailable(b -> pl.meta().put("version", b.getVersion()));
+        git.ifAvailable(g -> {
+            if (g.getShortCommitId() != null) pl.meta().put("gitCommit", g.getShortCommitId());
+            if (g.getBranch() != null) pl.meta().put("gitBranch", g.getBranch());
+        });
+        pl.meta().put("startedAt", pl.startedAt());
         pl.start();
         return pl;
     }
@@ -143,6 +155,17 @@ public class PerfLensAutoConfiguration {
         @Bean
         PerfLensClientObservationHandler perfLensClientObservationHandler(ObjectProvider<PerfLens> perfLens) {
             return new PerfLensClientObservationHandler(perfLens);
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = {"io.micrometer.observation.ObservationHandler",
+            "org.springframework.web.reactive.function.client.ClientRequestObservationContext"})
+    @ConditionalOnBooleanProperty(name = "perflens.http.enabled", matchIfMissing = true)
+    static class WebClientConfiguration {
+        @Bean
+        PerfLensWebClientObservationHandler perfLensWebClientObservationHandler(ObjectProvider<PerfLens> perfLens) {
+            return new PerfLensWebClientObservationHandler(perfLens);
         }
     }
 }

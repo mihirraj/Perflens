@@ -173,6 +173,19 @@ public class PerfLensConfig {
         private String path = "./.perflens";
         private int retentionDays = 14;
         private boolean snapshotOnShutdown = true;
+        /** Spring cron for automatic snapshots (default: daily 18:00); "-" disables. */
+        private String snapshotCron = "0 0 18 * * *";
+        /** Changes smaller than this (relative) are not reported when comparing with a snapshot. */
+        private double compareMinChangePercent = 25.0;
+        /** Minimum regression score: relative change x ln(1 + time consumed in ms). */
+        private double compareMinScore = 1.0;
+
+        public String getSnapshotCron() { return snapshotCron; }
+        public void setSnapshotCron(String v) { this.snapshotCron = v; }
+        public double getCompareMinChangePercent() { return compareMinChangePercent; }
+        public void setCompareMinChangePercent(double v) { this.compareMinChangePercent = v; }
+        public double getCompareMinScore() { return compareMinScore; }
+        public void setCompareMinScore(double v) { this.compareMinScore = v; }
 
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }

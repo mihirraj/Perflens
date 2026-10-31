@@ -42,7 +42,7 @@ public class LoadGenerator {
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
         List<String> gets = List.of("/orders/summary?limit=40", "/reports/product-pairs?minQuantity=1",
                 "/customers/search?q=user1", "/pricing/quote?customerId=%d&items=1500&coupon=SAVE10",
-                "/dashboard/%d", "/orders/summary?limit=25");
+                "/dashboard/%d", "/dashboard-parallel/%d", "/orders/summary?limit=25");
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 for (String g : gets) {

@@ -45,7 +45,7 @@ The demo shop has deliberate problems (N+1, slow self-join, `LOWER(col) LIKE '%x
 | SQL, bind params, timing, pool wait | wraps every `DataSource` bean with [datasource-proxy](https://github.com/jdbc-observations/datasource-proxy) | JDBC only (no R2DBC yet) |
 | Method timing + arguments | Spring AOP advisor on public methods of beans in your base packages | Spring AOP can't see private methods or `this.foo()` self-calls. Final classes are skipped. |
 | CPU / allocation / locks / GC / sockets | in-process JFR `RecordingStream` | HotSpot JVMs; ~1 s delay |
-| Outbound HTTP | Spring's built-in observations for `RestClient` / `RestTemplate` built from Boot's builders | `new RestTemplate()` and WebClient are not observed yet; their socket waits still show under *Slow socket I/O* |
+| Outbound HTTP | Spring's built-in observations for `RestClient`, `RestTemplate` and `WebClient` built from Boot's builders | Clients created with `new RestTemplate()` / `WebClient.create()` bypass observations; their socket waits still show under *Slow socket I/O* |
 | Request context | servlet filter per request; the first application method opens a context for jobs, listeners and async work | ThreadLocal: async hand-offs start a new context |
 
 *Base packages* default to your `@SpringBootApplication` package.
@@ -99,10 +99,22 @@ PerfLens checks the host JVM every 5 s. If old-generation occupancy after GC sta
 | `GET /actuator/perflens/report` | everything (JSON) |
 | `GET /actuator/perflens/findings` | ranked findings |
 | `GET /actuator/perflens/flamegraph` | CPU tree (d3-flame-graph format) |
+| `GET /actuator/perflens/snapshots` | stored snapshots, newest first |
+| `GET /actuator/perflens/compare?baseline=<name>` | what changed since a snapshot (newest when omitted) |
 | `POST /actuator/perflens/snapshot` | write a gzipped JSON snapshot to `perflens.storage.path` |
 | `POST /actuator/perflens/reset` | clear collected evidence |
 
-A snapshot is also written on graceful shutdown.
+## Snapshots and "what got worse"
+
+Snapshots are written daily at 18:00 (`perflens.storage.snapshot-cron`; set it to `-` to turn this off), on graceful shutdown, and on demand. Each one records the application name, version and git commit when `git.properties` / `build-info` are available. The **Changes** tab compares the current state with any snapshot:
+
+- **Regressions** are ranked by `relative change × ln(1 + ms consumed now)`, so a +300% on something that barely runs ranks low.
+- Only traffic-independent metrics are compared: avg/p95 time, SQL queries per request, outbound calls per request, CPU share and error rate. A busier day is not a regression.
+- Also shown: new and resolved findings, improvements, and entrypoints / SQL statements that didn't exist before.
+
+Tune with `perflens.storage.compare-min-change-percent` (default 25) and `perflens.storage.compare-min-score` (default 1.0).
+
+**Containers:** `./.perflens` lives inside the container and disappears on redeploy. Mount a volume and point `perflens.storage.path` at it to keep a baseline across deploys.
 
 ## Modules
 

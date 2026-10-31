@@ -425,7 +425,11 @@ public final class RuleEngine {
                                    String summary, List<String> suggestions, Map<String, Object> evidence,
                                    List<Exemplar> exemplars) {
         double s = round(Math.max(0, Math.min(100, score)));
-        String id = rule + "-" + Integer.toHexString((title + location).hashCode());
+        // Stable across refreshes and snapshots: built from what the finding is about, never from
+        // the measured numbers in the title (those change every few seconds).
+        String subject = location + "|" + evidence.get("sql") + "|" + evidence.get("entrypoint") + "|"
+                + title.replaceAll("[0-9][0-9.,]*%?", "#");
+        String id = rule + "-" + Integer.toHexString(subject.hashCode());
         return new Finding(id, rule, category, Finding.severityFor(s), s, title, location, summary, suggestions,
                 evidence, exemplars);
     }

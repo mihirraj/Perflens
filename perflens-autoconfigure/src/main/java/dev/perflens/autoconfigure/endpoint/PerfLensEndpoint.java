@@ -8,6 +8,7 @@ import org.springframework.boot.actuate.endpoint.annotation.WriteOperation;
 import org.springframework.boot.actuate.endpoint.web.WebEndpointResponse;
 import org.springframework.boot.actuate.endpoint.web.annotation.WebEndpoint;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.lang.Nullable;
 import org.springframework.util.StreamUtils;
 
 import java.io.IOException;
@@ -46,7 +47,16 @@ public class PerfLensEndpoint {
     }
 
     @ReadOperation
-    public WebEndpointResponse<Object> section(@Selector String section) {
+    public WebEndpointResponse<Object> section(@Selector String section, @Nullable String baseline) {
+        if (section.equals("compare")) {
+            try {
+                return new WebEndpointResponse<>(snapshots.compare(baseline));
+            } catch (IllegalArgumentException e) {
+                return new WebEndpointResponse<>(Map.of("error", e.getMessage()), 400);
+            } catch (IOException e) {
+                return new WebEndpointResponse<>(Map.of("error", e.toString()), 500);
+            }
+        }
         Object body = switch (section) {
             case "report" -> perfLens.report();
             case "findings" -> perfLens.findings();
@@ -63,7 +73,7 @@ public class PerfLensEndpoint {
         };
         if (body == null) {
             return new WebEndpointResponse<>(Map.of("error", "unknown section '" + section
-                    + "'; use report, findings, overview, flamegraph or snapshots"), 404);
+                    + "'; use report, findings, overview, flamegraph, snapshots or compare?baseline=<snapshot>"), 404);
         }
         return new WebEndpointResponse<>(body);
     }

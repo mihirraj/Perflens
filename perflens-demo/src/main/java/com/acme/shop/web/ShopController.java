@@ -4,6 +4,7 @@ import com.acme.shop.domain.Customer;
 import com.acme.shop.service.AuthService;
 import com.acme.shop.service.DashboardService;
 import com.acme.shop.service.OrderService;
+import com.acme.shop.service.ParallelDashboardService;
 import com.acme.shop.service.PricingService;
 import com.acme.shop.service.ReportService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,14 +23,16 @@ public class ShopController {
     private final PricingService pricing;
     private final DashboardService dashboard;
     private final AuthService auth;
+    private final ParallelDashboardService parallelDashboard;
 
     public ShopController(OrderService orders, ReportService reports, PricingService pricing,
-                          DashboardService dashboard, AuthService auth) {
+                          DashboardService dashboard, AuthService auth, ParallelDashboardService parallelDashboard) {
         this.orders = orders;
         this.reports = reports;
         this.pricing = pricing;
         this.dashboard = dashboard;
         this.auth = auth;
+        this.parallelDashboard = parallelDashboard;
     }
 
     @GetMapping("/orders/summary")
@@ -56,6 +59,11 @@ public class ShopController {
     @GetMapping("/dashboard/{customerId}")
     public Map<String, Object> dashboard(@PathVariable Long customerId) {
         return dashboard.load(customerId);
+    }
+
+    @GetMapping("/dashboard-parallel/{customerId}")
+    public Map<String, Object> dashboardParallel(@PathVariable Long customerId) {
+        return parallelDashboard.load(customerId);
     }
 
     @PostMapping("/login")

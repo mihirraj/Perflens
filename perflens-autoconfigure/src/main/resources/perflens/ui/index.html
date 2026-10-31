@@ -98,8 +98,8 @@
   "use strict";
   var BASE = location.pathname.replace(/\/+$/, "");
   var TABS = [["findings", "Findings"], ["queries", "Database"], ["methods", "Methods"], ["flame", "CPU flame graph"],
-              ["network", "Network"], ["endpoints", "Entrypoints"], ["jvm", "JVM"]];
-  var state = { tab: (location.hash || "#findings").slice(1), data: null, category: "ALL", sort: {}, open: {}, flameZoom: [], flameSearch: "" };
+              ["network", "Network"], ["endpoints", "Entrypoints"], ["jvm", "JVM"], ["changes", "Changes"]];
+  var state = { tab: (location.hash || "#findings").slice(1), data: null, category: "ALL", sort: {}, open: {}, flameZoom: [], flameSearch: "", baseline: "" };
   var timer = null;
 
   // ---------- helpers ----------
@@ -285,8 +285,59 @@
     return html.join("");
   }
 
-  // ---------- flame graph ----------
-  function viewFlame(d) {
+  // ---------- changes vs a snapshot ----------
+  function viewChanges() {
+    return '<div id="changes"><div class="empty">Comparing with snapshot…</div></div>';
+  }
+  function metaLine(m) {
+    if (!m) return '<span class="muted">unknown</span>';
+    var parts = [m.application, m.version, m.gitCommit ? "commit " + m.gitCommit : null, m.gitBranch].filter(Boolean);
+    return esc(parts.join(" · ") || "app") + ' <span class="muted">· data since ' + esc(new Date(m.observingSince || m.startedAt || 0).toLocaleString()) + "</span>";
+  }
+  function findingList(list, empty) {
+    if (!list || !list.length) return '<div class="muted">' + empty + "</div>";
+    return list.map(function (f) {
+      return '<div style="margin:4px 0"><span class="sev ' + esc(f.severity) + '">' + esc(f.severity) + "</span> " + esc(f.title) +
+        (f.location ? ' <span class="mono muted">' + esc(f.location) + "</span>" : "") + "</div>";
+    }).join("");
+  }
+  function loadChanges() {
+    var el = document.getElementById("changes"); if (!el) return;
+    fetch(BASE + "/compare" + (state.baseline ? "?baseline=" + encodeURIComponent(state.baseline) : ""), { headers: { Accept: "application/json" }, credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (c) {
+        if (state.tab !== "changes") return;
+        var h = [];
+        if (c.error) {
+          h.push('<div class="panel"><h2>Changes</h2><div>' + esc(c.error) + '</div><div style="margin-top:10px"><button class="btn" id="takesnap">Take a snapshot now</button></div></div>');
+          el.innerHTML = h.join(""); return;
+        }
+        var opts = (c.snapshots || []).map(function (s) {
+          return '<option value="' + esc(s.name) + '"' + (s.name === c.baseline.snapshot ? " selected" : "") + ">" + esc(s.name) + " (" + esc(new Date(s.modified).toLocaleString()) + ")</option>";
+        }).join("");
+        h.push('<div class="panel"><h2>Compared with</h2><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><select id="baseline" class="btn">' + opts +
+          '</select><button class="btn" id="takesnap">Take a snapshot now</button></div><div class="kv" style="margin-top:10px"><div class="k">baseline</div><div>' +
+          metaLine(c.baseline.meta) + '</div><div class="k">now</div><div>' + metaLine(c.current.meta) + "</div></div>" +
+          '<div class="muted" style="font-size:12px;margin-top:8px">Only traffic-independent metrics are compared (averages, p95, queries and calls per request, CPU share, error rate). Score = relative change × ln(1 + ms consumed now).</div></div>');
+        var regCols = [{ key: "area", label: "Area" }, { key: "item", label: "Item", fmt: function (v) { return '<span class="mono">' + esc(String(v).length > 160 ? String(v).slice(0, 160) + "…" : v) + "</span>"; } },
+          { key: "metric", label: "Metric" }, { key: "before", label: "Before", num: true }, { key: "after", label: "After", num: true },
+          { key: "changePercent", label: "Change", num: true, fmt: function (v) { return '<b style="color:' + (v > 0 ? "var(--crit)" : "var(--http)") + '">' + (v > 0 ? "+" : "") + esc(v) + "%</b>"; } },
+          { key: "score", label: "Score", num: true }];
+        if (!state.sort.reg) state.sort.reg = { key: "score", dir: -1 };
+        if (!state.sort.imp) state.sort.imp = { key: "score", dir: 1 };
+        h.push('<div class="panel"><h2>Regressions (' + c.regressions.length + ")</h2>" + (c.regressions.length ? table("reg", c.regressions, regCols) : '<div class="muted">Nothing got meaningfully worse.</div>') + "</div>");
+        h.push('<div class="panel"><h2>New findings (' + c.newFindings.length + ")</h2>" + findingList(c.newFindings, "No new findings.") + "</div>");
+        h.push('<div class="panel"><h2>Resolved findings (' + c.resolvedFindings.length + ")</h2>" + findingList(c.resolvedFindings, "None resolved.") + "</div>");
+        h.push('<div class="panel"><h2>Improvements (' + c.improvements.length + ")</h2>" + (c.improvements.length ? table("imp", c.improvements, regCols) : '<div class="muted">No significant improvements.</div>') + "</div>");
+        var newCols = [{ key: "item", label: "Item", fmt: function (v) { return '<span class="mono">' + esc(v) + "</span>"; } }, { key: "count", label: "Count", num: true, fmt: num }, { key: "totalMs", label: "Total", num: true, fmt: ms }, { key: "avgMs", label: "Avg", num: true, fmt: ms }];
+        h.push('<div class="panel"><h2>New entrypoints since the snapshot</h2>' + table("newep", c.newEndpoints, newCols) + "</div>");
+        h.push('<div class="panel"><h2>New SQL statements since the snapshot</h2>' + table("newsql", c.newQueries, newCols) + "</div>");
+        el.innerHTML = h.join("");
+      })
+      .catch(function (e) { el.innerHTML = '<div class="panel err">Compare failed: ' + esc(e.message) + "</div>"; });
+  }
+
+  // ---------- flame graph ----------  function viewFlame(d) {
     return '<div class="panel"><div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap"><h2 style="margin:0">CPU flame graph</h2>' +
       '<input type="search" id="fsearch" placeholder="Highlight frames (e.g. jackson, OrderService)" value="' + esc(state.flameSearch) + '">' +
       '<button class="btn" id="funzoom">Reset zoom</button><span class="muted" id="fmatch"></span><span class="spacer"></span>' +
@@ -352,10 +403,11 @@
     document.getElementById("tabs").innerHTML = TABS.map(function (t) { return '<button data-tab="' + t[0] + '" class="' + (state.tab === t[0] ? "active" : "") + '">' + t[1] + "</button>"; }).join("");
     var d = state.data, v = document.getElementById("view");
     if (!d) return;
-    var fn = { findings: viewFindings, queries: viewQueries, methods: viewMethods, flame: viewFlame, network: viewNetwork, endpoints: viewEndpoints, jvm: viewJvm }[state.tab] || viewFindings;
+    var fn = { findings: viewFindings, queries: viewQueries, methods: viewMethods, flame: viewFlame, network: viewNetwork, endpoints: viewEndpoints, jvm: viewJvm, changes: viewChanges }[state.tab] || viewFindings;
     var scroll = window.scrollY;
     v.innerHTML = fn(d);
     if (state.tab === "flame") drawFlame(d);
+    if (state.tab === "changes") loadChanges();
     window.scrollTo(0, scroll);
   }
   function load() {
@@ -371,7 +423,7 @@
   function schedule() {
     clearInterval(timer);
     // the flame graph and expanded rows are expensive to re-render while reading; refresh slower there
-    if (document.getElementById("auto").checked) timer = setInterval(function () { if (!document.hidden) load(); }, state.tab === "flame" ? 15000 : 5000);
+    if (document.getElementById("auto").checked) timer = setInterval(function () { if (!document.hidden) load(); }, (state.tab === "flame" || state.tab === "changes") ? 15000 : 5000);
   }
 
   document.addEventListener("click", function (ev) {
@@ -384,6 +436,8 @@
     var row = t.closest("[data-open]");
     if (row && !t.closest("pre") && !t.closest(".expand")) { var k = row.getAttribute("data-open"); state.open[k] = !state.open[k]; render(); }
   });
+  document.addEventListener("change", function (ev) { if (ev.target.id === "baseline") { state.baseline = ev.target.value; loadChanges(); } });
+  document.addEventListener("click", function (ev) { if (ev.target.id === "takesnap") post("snapshot").then(function () { state.baseline = ""; loadChanges(); }); });
   document.addEventListener("input", function (ev) { if (ev.target.id === "fsearch") { state.flameSearch = ev.target.value; drawFlame(state.data); } });
   document.addEventListener("click", function (ev) { if (ev.target.id === "funzoom") { state.flameZoom = []; drawFlame(state.data); } });
   document.getElementById("refresh").onclick = load;

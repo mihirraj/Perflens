@@ -52,7 +52,8 @@ public final class TraceWindow {
         return r;
     }
 
-    public void onHttp(HttpCall call) {
+    /** Synchronized: reactive clients (WebClient) may complete calls on other threads, even concurrently. */
+    public synchronized void onHttp(HttpCall call) {
         httpCount++;
         httpMicros += (call.endNanos() - call.startNanos()) / 1000;
         if (httpCalls.size() < MAX_HTTP_CALLS) httpCalls.add(call);
@@ -62,9 +63,9 @@ public final class TraceWindow {
     public void entrypoint(String name) { this.entrypoint = name; }
     public long startNanos() { return startNanos; }
     public Map<String, SqlRepeat> sqlRepeats() { return sqlRepeats; }
-    public List<HttpCall> httpCalls() { return httpCalls; }
+    public synchronized List<HttpCall> httpCalls() { return new ArrayList<>(httpCalls); }
     public int sqlCount() { return sqlCount; }
     public long sqlMicros() { return sqlMicros; }
-    public int httpCount() { return httpCount; }
-    public long httpMicros() { return httpMicros; }
+    public synchronized int httpCount() { return httpCount; }
+    public synchronized long httpMicros() { return httpMicros; }
 }

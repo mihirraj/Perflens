@@ -39,6 +39,7 @@ class PerfLensEndToEndTest {
             rest.getForObject("/reports/product-pairs?minQuantity=1", String.class);
             rest.getForObject("/customers/search?q=user1", String.class);
             rest.getForObject("/dashboard/" + (i + 1), String.class);
+            rest.getForObject("/dashboard-parallel/" + (i + 1), String.class);
             rest.postForObject("/login?username=alice&password=wonderland", null, String.class);
         }
         // enough CPU work for JFR sampling to attribute the hot method
@@ -99,6 +100,15 @@ class PerfLensEndToEndTest {
         assertThat(waterfall).isNotNull();
         assertThat(waterfall.at("/evidence/estimatedSavingMs").asDouble()).isGreaterThan(100);
 
+        // WebClient calls are recorded too, and the parallel version is NOT reported as a waterfall
+        assertThat(findFirst(report, "NET-HTTP-WATERFALL", "dashboard-parallel")).isNull();
+        JsonNode parallelEp = null;
+        for (JsonNode e : report.get("endpoints")) if (e.get("entrypoint").asText().equals("GET /dashboard-parallel/{customerId}")) parallelEp = e;
+        assertThat(parallelEp).as("parallel dashboard entrypoint").isNotNull();
+        assertThat(parallelEp.get("avgHttpCalls").asDouble()).isEqualTo(3.0);
+        assertThat(parallelEp.get("avgHttpMs").asDouble()).as("3 concurrent calls: sum of call times > wall time")
+                .isGreaterThan(parallelEp.get("avgMs").asDouble());
+
         // JFR: the profiler runs and attributes CPU to PricingService.quote
         assertThat(report.at("/overview/profiler").asText()).isEqualTo("running");
         List<String> hot = new ArrayList<>();
@@ -121,6 +131,17 @@ class PerfLensEndToEndTest {
         jh.setContentType(MediaType.APPLICATION_JSON);
         ResponseEntity<String> snap = rest.exchange("/actuator/perflens/snapshot", HttpMethod.POST, new HttpEntity<>("{}", jh), String.class);
         assertThat(snap.getBody()).contains("snapshot-");
+
+        // comparing with that snapshot: N+1 introduced afterwards shows up as a regression
+        for (int i = 0; i < 5; i++) rest.getForObject("/orders/summary?limit=5", String.class);
+        JsonNode cmp0 = json.readTree(rest.getForObject("/actuator/perflens/compare", String.class));
+        assertThat(cmp0.at("/baseline/snapshot").asText()).startsWith("snapshot-");
+        assertThat(cmp0.has("regressions")).isTrue();
+        assertThat(cmp0.at("/baseline/meta/application").asText()).isEqualTo("perflens-demo-shop");
+
+        // the baseline parameter only accepts snapshot file names
+        ResponseEntity<String> traversal = rest.getForEntity("/actuator/perflens/compare?baseline=../../pom.xml", String.class);
+        assertThat(traversal.getStatusCode().value()).isEqualTo(400);
     }
 
     private static String AuthService_hash(String pw) {

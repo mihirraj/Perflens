@@ -49,15 +49,7 @@ public final class PerfLensClientObservationHandler implements ObservationHandle
         String method = request == null ? "?" : request.getMethod().name();
         URI uri = request == null ? null : request.getURI();
         String host = uri == null ? "?" : uri.getHost() + (uri.getPort() > 0 ? ":" + uri.getPort() : "");
-        String route = context.getUriTemplate();
-        if (route != null && route.contains("://")) {
-            // template given as a full URL: keep only the path part
-            int slash = route.indexOf('/', route.indexOf("://") + 3);
-            route = slash < 0 ? "/" : route.substring(slash);
-        }
-        if (route == null) route = uri == null ? "?" : uri.getRawPath();
-        int q = route.indexOf('?');
-        if (q >= 0) route = route.substring(0, q);
+        String route = HttpRoutes.route(context.getUriTemplate(), uri);
         int status = 0;
         ClientHttpResponse response = context.getResponse();
         if (response != null) {
