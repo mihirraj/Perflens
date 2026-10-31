@@ -15,11 +15,11 @@ import java.sql.SQLException;
  * reaches the real pool.
  */
 public final class PerfLensDataSource extends DelegatingDataSource {
-    private final ObjectProvider<PerfLens> perfLens;
+    private final dev.perflens.autoconfigure.PerfLensRef perfLens;
 
     PerfLensDataSource(DataSource proxied, ObjectProvider<PerfLens> perfLens) {
         super(proxied);
-        this.perfLens = perfLens;
+        this.perfLens = new dev.perflens.autoconfigure.PerfLensRef(perfLens);
     }
 
     @Override
@@ -39,7 +39,7 @@ public final class PerfLensDataSource extends DelegatingDataSource {
     }
 
     private void record(long t0) {
-        PerfLens pl = perfLens.getIfAvailable();
+        PerfLens pl = perfLens.get();
         if (pl != null && pl.isCollecting()) pl.sql().recordConnectionAcquire((System.nanoTime() - t0) / 1000, TraceContext.current());
     }
 }

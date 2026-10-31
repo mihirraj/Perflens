@@ -54,6 +54,14 @@ class SqlNormalizerTest {
     }
 
     @Test
+    void dollarPlaceholdersAreNamedAndInlined() {
+        String sql = "select * from users where email = $1 and password_hash = $2";
+        assertThat(SqlNormalizer.placeholderNames(sql)).containsExactly("email", "password_hash");
+        assertThat(SqlNormalizer.inline(sql, Arrays.asList("'a@b.c'", "***")))
+                .isEqualTo("select * from users where email = 'a@b.c' and password_hash = ***");
+    }
+
+    @Test
     void kinds() {
         assertThat(SqlNormalizer.kind("  with x as (select 1) select * from x")).isEqualTo("SELECT");
         assertThat(SqlNormalizer.kind("update t set a=1")).isEqualTo("UPDATE");

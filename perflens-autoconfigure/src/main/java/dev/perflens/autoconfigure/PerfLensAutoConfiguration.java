@@ -121,6 +121,29 @@ public class PerfLensAutoConfiguration {
         }
     }
 
+    /** Opt-in: active when the application adds io.r2dbc:r2dbc-proxy next to its R2DBC driver. */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = {"io.r2dbc.proxy.ProxyConnectionFactory", "io.r2dbc.spi.ConnectionFactory"})
+    @ConditionalOnBooleanProperty(name = "perflens.sql.enabled", matchIfMissing = true)
+    static class R2dbcConfiguration {
+        @Bean
+        static dev.perflens.autoconfigure.r2dbc.PerfLensConnectionFactoryPostProcessor perfLensConnectionFactoryPostProcessor(
+                ObjectProvider<PerfLens> perfLens) {
+            return new dev.perflens.autoconfigure.r2dbc.PerfLensConnectionFactoryPostProcessor(perfLens);
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
+    @ConditionalOnClass(name = "org.springframework.web.server.WebFilter")
+    static class ReactiveWebConfiguration {
+        @Bean
+        dev.perflens.autoconfigure.web.PerfLensWebFilter perfLensWebFilter(ObjectProvider<PerfLens> perfLens, Environment env) {
+            return new dev.perflens.autoconfigure.web.PerfLensWebFilter(perfLens,
+                    env.getProperty("management.endpoints.web.base-path", "/actuator"));
+        }
+    }
+
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnBooleanProperty(name = "perflens.methods.enabled", matchIfMissing = true)
     static class MethodConfiguration {

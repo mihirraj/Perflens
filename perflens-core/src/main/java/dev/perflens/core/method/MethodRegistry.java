@@ -62,6 +62,11 @@ public final class MethodRegistry {
         this.exemplarMinMicros = config.getMethods().getExemplarMinDuration().toNanos() / 1000;
     }
 
+    /** Fast path: the stat for a method seen before, or null. */
+    public MethodStat cached(Method method) {
+        return stats.get(method);
+    }
+
     /** Returns null when the method cap is reached (call is then not tracked). */
     public MethodStat stat(Method method, Class<?> targetClass) {
         MethodStat s = stats.get(method);

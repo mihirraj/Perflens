@@ -32,12 +32,12 @@ import java.util.List;
  * When no trace window is open (scheduled jobs, listeners, async), the call opens one.
  */
 public final class PerfLensMethodAdvisor extends AbstractPointcutAdvisor {
-    private final transient ObjectProvider<PerfLens> perfLens;
+    private final transient dev.perflens.autoconfigure.PerfLensRef perfLens;
     private final transient Pointcut pointcut;
     private final transient Advice advice;
 
     public PerfLensMethodAdvisor(ObjectProvider<PerfLens> perfLens, List<String> basePackages) {
-        this.perfLens = perfLens;
+        this.perfLens = new dev.perflens.autoconfigure.PerfLensRef(perfLens);
         List<String> prefixes = basePackages.stream().map(p -> p.endsWith(".") ? p : p + ".").toList();
         this.pointcut = new StaticMethodMatcherPointcut() {
             {
@@ -49,7 +49,7 @@ public final class PerfLensMethodAdvisor extends AbstractPointcutAdvisor {
                 int mod = method.getModifiers();
                 return Modifier.isPublic(mod) && !Modifier.isStatic(mod) && !method.isSynthetic()
                         && !method.isBridge() && method.getDeclaringClass() != Object.class
-                        && !isTrivialAccessor(method);
+                        && !isTrivialAccessor(method) && !isAsync(method.getReturnType());
             }
         };
         this.advice = (MethodInterceptor) this::invoke;
@@ -71,6 +71,25 @@ public final class PerfLensMethodAdvisor extends AbstractPointcutAdvisor {
                 || Advice.class.isAssignableFrom(clazz));
     }
 
+    /**
+     * Methods returning Mono/Flux/CompletableFuture finish when the pipeline is assembled, not when
+     * the work is done: timing them would report near-zero durations and misleading arguments.
+     */
+    static boolean isAsync(Class<?> type) {
+        if (java.util.concurrent.CompletionStage.class.isAssignableFrom(type)
+                || java.util.concurrent.Future.class.isAssignableFrom(type)) return true;
+        for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+            if (implementsPublisher(c)) return true;
+        }
+        return false;
+    }
+
+    private static boolean implementsPublisher(Class<?> c) {
+        if (c.getName().equals("org.reactivestreams.Publisher")) return true;
+        for (Class<?> i : c.getInterfaces()) if (implementsPublisher(i)) return true;
+        return false;
+    }
+
     private static boolean isTrivialAccessor(Method m) {
         String n = m.getName();
         int params = m.getParameterCount();
@@ -79,16 +98,30 @@ public final class PerfLensMethodAdvisor extends AbstractPointcutAdvisor {
                 || n.equals("toString") || n.equals("hashCode") || n.equals("equals");
     }
 
+    private static Class<?> targetClass(MethodInvocation inv, Method m) {
+        Object target = inv.getThis();
+        return target == null ? m.getDeclaringClass() : ClassUtils.getUserClass(AopUtils.getTargetClass(target));
+    }
+
     private Object invoke(MethodInvocation inv) throws Throwable {
-        PerfLens pl = perfLens.getIfAvailable();
+        PerfLens pl = perfLens.get();
         if (pl == null || !pl.isCollecting()) return inv.proceed();
         Method m = inv.getMethod();
-        Object target = inv.getThis();
-        Class<?> targetClass = target == null ? m.getDeclaringClass() : ClassUtils.getUserClass(AopUtils.getTargetClass(target));
-        MethodRegistry.MethodStat stat = pl.methods().stat(m, targetClass);
-
-        TraceWindow opened = TraceContext.openIfAbsent(targetClass.getSimpleName() + "." + m.getName());
-        TraceWindow window = opened != null ? opened : TraceContext.current();
+        // hot path: the stat is cached per Method and a request window is usually already open, so
+        // the target class and the entrypoint name are only computed when actually needed
+        MethodRegistry.MethodStat stat = pl.methods().cached(m);
+        Class<?> targetClass = null;
+        if (stat == null) {
+            targetClass = targetClass(inv, m);
+            stat = pl.methods().stat(m, targetClass);
+        }
+        TraceWindow window = TraceContext.current();
+        TraceWindow opened = null;
+        if (window == null) {
+            if (targetClass == null) targetClass = targetClass(inv, m);
+            opened = TraceContext.openIfAbsent(targetClass.getSimpleName() + "." + m.getName());
+            window = opened;
+        }
         MethodRegistry.Before before = MethodRegistry.Before.of(window);
         Throwable error = null;
         long t0 = System.nanoTime();

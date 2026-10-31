@@ -110,6 +110,11 @@ public final class SqlNormalizer {
                 while (i < n && isIdentPart(sql.charAt(i))) i++;
                 String word = sql.substring(start, i);
                 i--;
+                if (isDollarPlaceholder(word)) {
+                    if (inValues && insertColumns != null && insertIdx < insertColumns.size()) names.add(insertColumns.get(insertIdx++));
+                    else names.add(lastIdent);
+                    continue;
+                }
                 String upper = word.toUpperCase(Locale.ROOT);
                 if (upper.equals("VALUES")) inValues = true;
                 if (!isKeyword(upper)) lastIdent = word;
@@ -151,11 +156,24 @@ public final class SqlNormalizer {
                 i = end - 1;
             } else if (c == '?' && v < values.size()) {
                 out.append(values.get(v++));
+            } else if (c == '$' && i + 1 < n && Character.isDigit(sql.charAt(i + 1))) {
+                // PostgreSQL / R2DBC style positional placeholder: $1 is the first value
+                int j = i + 1;
+                while (j < n && Character.isDigit(sql.charAt(j))) j++;
+                int idx = Integer.parseInt(sql.substring(i + 1, j)) - 1;
+                out.append(idx >= 0 && idx < values.size() ? values.get(idx) : sql.substring(i, j));
+                i = j - 1;
             } else {
                 out.append(c);
             }
         }
         return out.toString();
+    }
+
+    private static boolean isDollarPlaceholder(String word) {
+        if (word.length() < 2 || word.charAt(0) != '$') return false;
+        for (int k = 1; k < word.length(); k++) if (!Character.isDigit(word.charAt(k))) return false;
+        return true;
     }
 
     private static int skipString(String sql, int i) {

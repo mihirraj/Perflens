@@ -21,10 +21,10 @@ public final class PerfLensWebClientObservationHandler implements ObservationHan
     private static final String START = "perflens.start";
     private static final String WINDOW = "perflens.window";
 
-    private final ObjectProvider<PerfLens> perfLens;
+    private final dev.perflens.autoconfigure.PerfLensRef perfLens;
 
     public PerfLensWebClientObservationHandler(ObjectProvider<PerfLens> perfLens) {
-        this.perfLens = perfLens;
+        this.perfLens = new dev.perflens.autoconfigure.PerfLensRef(perfLens);
     }
 
     @Override
@@ -41,7 +41,7 @@ public final class PerfLensWebClientObservationHandler implements ObservationHan
 
     @Override
     public void onStop(ClientRequestObservationContext context) {
-        PerfLens pl = perfLens.getIfAvailable();
+        PerfLens pl = perfLens.get();
         Long start = context.get(START);
         if (pl == null || !pl.isCollecting() || start == null || !pl.config().getHttp().isEnabled()) return;
         long end = System.nanoTime();

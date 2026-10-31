@@ -18,17 +18,17 @@ import java.io.IOException;
 public final class PerfLensServletFilter implements Filter {
     private static final String BEST_MATCHING_PATTERN = "org.springframework.web.servlet.HandlerMapping.bestMatchingPattern";
 
-    private final ObjectProvider<PerfLens> perfLens;
+    private final dev.perflens.autoconfigure.PerfLensRef perfLens;
     private final String managementBasePath;
 
     public PerfLensServletFilter(ObjectProvider<PerfLens> perfLens, String managementBasePath) {
-        this.perfLens = perfLens;
+        this.perfLens = new dev.perflens.autoconfigure.PerfLensRef(perfLens);
         this.managementBasePath = managementBasePath;
     }
 
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
-        PerfLens pl = perfLens.getIfAvailable();
+        PerfLens pl = perfLens.get();
         if (pl == null || !pl.isCollecting() || !(req instanceof HttpServletRequest http) || !(res instanceof HttpServletResponse response)
                 || http.getRequestURI().startsWith(managementBasePath) || TraceContext.current() != null) {
             chain.doFilter(req, res);

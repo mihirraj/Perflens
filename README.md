@@ -42,8 +42,10 @@ The demo shop has deliberate problems (N+1, slow self-join, `LOWER(col) LIKE '%x
 
 | What | How | Limits |
 |---|---|---|
-| SQL, bind params, timing, pool wait | wraps every `DataSource` bean with [datasource-proxy](https://github.com/jdbc-observations/datasource-proxy) | JDBC only (no R2DBC yet) |
-| Method timing + arguments | Spring AOP advisor on public methods of beans in your base packages | Spring AOP can't see private methods or `this.foo()` self-calls. Final classes are skipped. |
+| SQL, bind params, timing, pool wait | wraps every `DataSource` bean with [datasource-proxy](https://github.com/jdbc-observations/datasource-proxy) | |
+| R2DBC SQL, bind params, timing | wraps every R2DBC `ConnectionFactory` with [r2dbc-proxy](https://github.com/r2dbc/r2dbc-proxy), **opt-in: add `io.r2dbc:r2dbc-proxy`** to your app | No per-request N+1 detection yet: reactive pipelines hop threads, so SQL can't be tied to its request |
+| WebFlux routes | `WebFilter` timing each route by its template | Per-request SQL/HTTP breakdown is servlet-only for now |
+| Method timing + arguments | Spring AOP advisor on public methods of beans in your base packages | Spring AOP can't see private methods or `this.foo()` self-calls. Final classes are skipped, and so are methods returning `Mono`/`Flux`/`CompletableFuture`, where timing would only measure pipeline assembly. |
 | CPU / allocation / locks / GC / sockets | in-process JFR `RecordingStream` | HotSpot JVMs; ~1 s delay |
 | Outbound HTTP | Spring's built-in observations for `RestClient`, `RestTemplate` and `WebClient` built from Boot's builders | Clients created with `new RestTemplate()` / `WebClient.create()` bypass observations; their socket waits still show under *Slow socket I/O* |
 | Request context | servlet filter per request; the first application method opens a context for jobs, listeners and async work | ThreadLocal: async hand-offs start a new context |
@@ -60,8 +62,11 @@ Argument and parameter values are rendered **without calling `toString()`**, bec
 
 | Setting | Throughput | CPU per request | p50 | p99 |
 |---|---|---|---|---|
-| PerfLens on (all collectors) | −9.6% | +10.5% (+0.086 ms) | +0.17 ms | +0.09 ms |
-| PerfLens on, JFR disabled | −12.7% | +11.3% (+0.09 ms) | +0.19 ms | +0.21 ms |
+| PerfLens on (all collectors), v0.1 | −9.6% | +10.5% (+0.086 ms) | +0.17 ms | +0.09 ms |
+| PerfLens on, JFR disabled, v0.1 | −12.7% | +11.3% (+0.09 ms) | +0.19 ms | +0.21 ms |
+| **PerfLens on (all collectors), current** | −9.3% | **+6.2% (+0.05 ms)** | **+0.11 ms** | +0.18 ms |
+
+The improvement came from profiling the benchmark itself: every hook was doing a full Spring bean lookup (`ObjectProvider.getIfAvailable()`) on each SQL statement and method call. It now resolves once and caches the bean. Throughput numbers vary by a few percent between runs; CPU per request is the most stable metric.
 
 How to read this:
 - **This workload is a deliberate worst case.** Requests hit an in-memory H2 database and cost only ~0.8 ms of CPU each, yet run ~40 SQL statements each (the demo's N+1), so per-statement instrumentation dominates.

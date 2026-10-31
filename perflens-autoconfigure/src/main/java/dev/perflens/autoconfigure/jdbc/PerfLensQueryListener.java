@@ -16,10 +16,10 @@ import java.util.List;
 final class PerfLensQueryListener implements QueryExecutionListener {
     private static final ThreadLocal<long[]> START = ThreadLocal.withInitial(() -> new long[1]);
 
-    private final ObjectProvider<PerfLens> perfLens;
+    private final dev.perflens.autoconfigure.PerfLensRef perfLens;
 
     PerfLensQueryListener(ObjectProvider<PerfLens> perfLens) {
-        this.perfLens = perfLens;
+        this.perfLens = new dev.perflens.autoconfigure.PerfLensRef(perfLens);
     }
 
     @Override
@@ -30,7 +30,7 @@ final class PerfLensQueryListener implements QueryExecutionListener {
     @Override
     public void afterQuery(ExecutionInfo execInfo, List<QueryInfo> queryInfoList) {
         long micros = (System.nanoTime() - START.get()[0]) / 1000;
-        PerfLens pl = perfLens.getIfAvailable();
+        PerfLens pl = perfLens.get();
         if (pl == null || !pl.isCollecting() || !pl.config().getSql().isEnabled() || queryInfoList.isEmpty()) return;
         long each = micros / queryInfoList.size();
         for (QueryInfo q : queryInfoList) {
