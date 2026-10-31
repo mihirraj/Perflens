@@ -28,8 +28,10 @@ Requirements: Java 17+ on a HotSpot JVM (JFR), Spring Boot 3.5.
 
 ### Try the demo
 
+Needs only a JDK 17+ (`JAVA_HOME`). The Maven wrapper downloads Maven itself.
+
 ```bash
-mvn install
+./mvnw install            # Windows: mvnw.cmd install   (add -DskipTests for a faster build)
 java -jar perflens-demo/target/perflens-demo-0.1.0-SNAPSHOT.jar
 # open http://localhost:8080/actuator/perflens
 ```
