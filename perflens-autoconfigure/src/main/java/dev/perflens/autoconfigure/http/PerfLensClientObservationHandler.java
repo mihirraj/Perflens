@@ -43,7 +43,7 @@ public final class PerfLensClientObservationHandler implements ObservationHandle
     public void onStop(ClientRequestObservationContext context) {
         PerfLens pl = perfLens.getIfAvailable();
         Long start = context.get(START);
-        if (pl == null || start == null || !pl.config().getHttp().isEnabled()) return;
+        if (pl == null || !pl.isCollecting() || start == null || !pl.config().getHttp().isEnabled()) return;
         long end = System.nanoTime();
         ClientHttpRequest request = context.getCarrier();
         String method = request == null ? "?" : request.getMethod().name();

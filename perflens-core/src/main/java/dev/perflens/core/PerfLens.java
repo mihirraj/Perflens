@@ -1,5 +1,6 @@
 package dev.perflens.core;
 
+import dev.perflens.core.guard.Guard;
 import dev.perflens.core.http.HttpRegistry;
 import dev.perflens.core.jfr.JfrProfiler;
 import dev.perflens.core.method.MethodRegistry;
@@ -15,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Facade wiring all collectors together. One instance per application. */
-public final class PerfLens implements AutoCloseable {
+public final class PerfLens implements AutoCloseable, Guard.Target {
     private final PerfLensConfig config;
     private final ValueRenderer renderer;
     private final CallerResolver callers;
@@ -27,6 +28,8 @@ public final class PerfLens implements AutoCloseable {
     private final RuleEngine rules;
     private final long startedAt = System.currentTimeMillis();
     private volatile long resetAt = startedAt;
+    private volatile boolean collecting = true;
+    private Guard guard;
 
     public PerfLens(PerfLensConfig config) {
         this.config = config;
@@ -41,12 +44,48 @@ public final class PerfLens implements AutoCloseable {
     }
 
     public void start() {
+        start(Guard.jvmReader());
+    }
+
+    /** Starts collection; the reader supplies JVM pressure readings to the circuit breaker. */
+    public synchronized void start(java.util.function.Supplier<Guard.Reading> pressureReader) {
         if (config.getJfr().isEnabled()) profiler.start();
+        PerfLensConfig.CircuitBreaker cb = config.getCircuitBreaker();
+        if (cb.isEnabled() && guard == null) {
+            guard = new Guard(this, pressureReader, cb.getMaxHeapAfterGcPercent(), cb.getMaxGcTimePercent(),
+                    cb.getCheckInterval());
+            guard.start();
+        }
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (guard != null) guard.close();
         profiler.close();
+    }
+
+    /** Hooks call this first and do nothing while the circuit breaker has paused collection. */
+    public boolean isCollecting() {
+        return collecting;
+    }
+
+    @Override
+    public void pauseCollection(String reason) {
+        collecting = false;
+        profiler.close();
+        profiler.reset(); // the flame graph is the largest buffer: give that memory back now
+    }
+
+    @Override
+    public void resumeCollection() {
+        if (config.getJfr().isEnabled()) profiler.start();
+        collecting = true;
+    }
+
+    /** Circuit-breaker state for the UI, or null when disabled. */
+    public Map<String, Object> guardStatus() {
+        Guard g = guard;
+        return g == null ? null : g.status();
     }
 
     public List<Finding> findings() {

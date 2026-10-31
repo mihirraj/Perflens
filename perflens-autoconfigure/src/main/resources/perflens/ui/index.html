@@ -170,6 +170,12 @@
       card("CPU samples", num(o.cpuSamples)),
       card("Observing for", ago(o.observingSince)),
       "</div>"];
+    var cb = o.circuitBreaker;
+    if (cb && cb.state === "PAUSED") {
+      html.push('<div class="panel finding CRITICAL"><span class="sev CRITICAL">PAUSED</span><span class="title">PerfLens stopped collecting to protect the application</span>' +
+        "<div>" + esc(cb.reason) + " · since " + esc(new Date(cb.since).toLocaleTimeString()) +
+        ". Collection resumes automatically after ~30 s of normal heap and GC levels. Evidence collected before the pause is still shown.</div></div>");
+    }
     html.push('<div class="panel muted" style="font-size:12px">Watching <span class="mono">' + esc((o.basePackages || []).join(", ")) +
       "</span> · JFR " + esc(o.profiler) + " · parameters captured: <b>" + (o.captureParams ? "yes (masked by name)" : "no") +
       "</b> · Java " + esc(o.javaVersion) + "</div>");

@@ -19,6 +19,26 @@ public class PerfLensConfig {
     private final Methods methods = new Methods();
     private final Http http = new Http();
     private final Storage storage = new Storage();
+    private final CircuitBreaker circuitBreaker = new CircuitBreaker();
+
+    public CircuitBreaker getCircuitBreaker() { return circuitBreaker; }
+
+    /** Pauses all collection while the host JVM is under memory / GC pressure. */
+    public static class CircuitBreaker {
+        private boolean enabled = true;
+        private double maxHeapAfterGcPercent = 85.0;
+        private double maxGcTimePercent = 10.0;
+        private Duration checkInterval = Duration.ofSeconds(5);
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public double getMaxHeapAfterGcPercent() { return maxHeapAfterGcPercent; }
+        public void setMaxHeapAfterGcPercent(double v) { this.maxHeapAfterGcPercent = v; }
+        public double getMaxGcTimePercent() { return maxGcTimePercent; }
+        public void setMaxGcTimePercent(double v) { this.maxGcTimePercent = v; }
+        public Duration getCheckInterval() { return checkInterval; }
+        public void setCheckInterval(Duration v) { this.checkInterval = v; }
+    }
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }

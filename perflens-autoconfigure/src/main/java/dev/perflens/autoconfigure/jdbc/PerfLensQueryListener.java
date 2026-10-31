@@ -31,7 +31,7 @@ final class PerfLensQueryListener implements QueryExecutionListener {
     public void afterQuery(ExecutionInfo execInfo, List<QueryInfo> queryInfoList) {
         long micros = (System.nanoTime() - START.get()[0]) / 1000;
         PerfLens pl = perfLens.getIfAvailable();
-        if (pl == null || !pl.config().getSql().isEnabled() || queryInfoList.isEmpty()) return;
+        if (pl == null || !pl.isCollecting() || !pl.config().getSql().isEnabled() || queryInfoList.isEmpty()) return;
         long each = micros / queryInfoList.size();
         for (QueryInfo q : queryInfoList) {
             List<List<ParameterSetOperation>> sets = q.getParametersList();

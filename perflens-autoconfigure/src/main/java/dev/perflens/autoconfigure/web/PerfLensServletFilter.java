@@ -29,7 +29,7 @@ public final class PerfLensServletFilter implements Filter {
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
         PerfLens pl = perfLens.getIfAvailable();
-        if (pl == null || !(req instanceof HttpServletRequest http) || !(res instanceof HttpServletResponse response)
+        if (pl == null || !pl.isCollecting() || !(req instanceof HttpServletRequest http) || !(res instanceof HttpServletResponse response)
                 || http.getRequestURI().startsWith(managementBasePath) || TraceContext.current() != null) {
             chain.doFilter(req, res);
             return;

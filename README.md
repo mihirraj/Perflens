@@ -83,7 +83,13 @@ perflens.jfr.cpu-sample-interval=20ms
 perflens.jfr.hot-method-percent=10
 perflens.storage.path=./.perflens
 perflens.storage.retention-days=14
+perflens.circuit-breaker.max-heap-after-gc-percent=85
+perflens.circuit-breaker.max-gc-time-percent=10
 ```
+
+### Circuit breaker
+
+PerfLens checks the host JVM every 5 s. If old-generation occupancy after GC stays above 85%, or GC takes more than 10% of wall time, for two checks in a row, it stops JFR, frees its flame-graph memory and stops recording. The UI shows a *PAUSED* banner with the reason. Collection resumes after six consecutive calm checks (about 30 s) with heap at least 15 points under the limit.
 
 ## API
 

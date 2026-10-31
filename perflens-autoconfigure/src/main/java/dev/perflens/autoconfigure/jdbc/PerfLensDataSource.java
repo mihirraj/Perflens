@@ -40,6 +40,6 @@ public final class PerfLensDataSource extends DelegatingDataSource {
 
     private void record(long t0) {
         PerfLens pl = perfLens.getIfAvailable();
-        if (pl != null) pl.sql().recordConnectionAcquire((System.nanoTime() - t0) / 1000, TraceContext.current());
+        if (pl != null && pl.isCollecting()) pl.sql().recordConnectionAcquire((System.nanoTime() - t0) / 1000, TraceContext.current());
     }
 }

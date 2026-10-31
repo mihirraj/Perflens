@@ -58,6 +58,7 @@ public final class ReportBuilder {
         m.put("basePackages", pl.callers().basePackages());
         m.put("captureParams", pl.config().getCapture().isParams());
         m.put("profiler", pl.profiler().status());
+        m.put("circuitBreaker", pl.guardStatus());
         m.put("cpuSamples", pl.profiler().totalSamples());
         m.put("jfrEvents", pl.profiler().eventsReceived());
         m.put("jfrHandlerErrors", pl.profiler().handlerErrors());

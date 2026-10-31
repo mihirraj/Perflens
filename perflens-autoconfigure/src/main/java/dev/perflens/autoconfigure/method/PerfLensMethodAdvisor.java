@@ -81,7 +81,7 @@ public final class PerfLensMethodAdvisor extends AbstractPointcutAdvisor {
 
     private Object invoke(MethodInvocation inv) throws Throwable {
         PerfLens pl = perfLens.getIfAvailable();
-        if (pl == null) return inv.proceed();
+        if (pl == null || !pl.isCollecting()) return inv.proceed();
         Method m = inv.getMethod();
         Object target = inv.getThis();
         Class<?> targetClass = target == null ? m.getDeclaringClass() : ClassUtils.getUserClass(AopUtils.getTargetClass(target));
