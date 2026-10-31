@@ -180,6 +180,11 @@ public class PerfLensConfig {
         /** Minimum regression score: relative change x ln(1 + time consumed in ms). */
         private double compareMinScore = 1.0;
 
+        /** After a scheduled snapshot, start a fresh window so each snapshot covers one period (e.g. one day). */
+        private boolean resetAfterScheduledSnapshot = true;
+
+        public boolean isResetAfterScheduledSnapshot() { return resetAfterScheduledSnapshot; }
+        public void setResetAfterScheduledSnapshot(boolean v) { this.resetAfterScheduledSnapshot = v; }
         public String getSnapshotCron() { return snapshotCron; }
         public void setSnapshotCron(String v) { this.snapshotCron = v; }
         public double getCompareMinChangePercent() { return compareMinChangePercent; }

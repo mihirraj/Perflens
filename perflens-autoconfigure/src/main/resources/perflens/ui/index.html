@@ -318,6 +318,7 @@
         h.push('<div class="panel"><h2>Compared with</h2><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><select id="baseline" class="btn">' + opts +
           '</select><button class="btn" id="takesnap">Take a snapshot now</button></div><div class="kv" style="margin-top:10px"><div class="k">baseline</div><div>' +
           metaLine(c.baseline.meta) + '</div><div class="k">now</div><div>' + metaLine(c.current.meta) + "</div></div>" +
+          (c.baseline.meta && c.current.meta && c.baseline.meta.observingSince === c.current.meta.observingSince ? '<div class="err" style="font-size:12px;margin-top:8px">Overlapping windows: the current numbers still include everything in this snapshot, so changes look smaller than they are. Scheduled snapshots start a fresh window automatically; or press Reset after taking a snapshot to compare clean periods.</div>' : "") +
           '<div class="muted" style="font-size:12px;margin-top:8px">Only traffic-independent metrics are compared (averages, p95, queries and calls per request, CPU share, error rate). Score = relative change × ln(1 + ms consumed now).</div></div>');
         var regCols = [{ key: "area", label: "Area" }, { key: "item", label: "Item", fmt: function (v) { return '<span class="mono">' + esc(String(v).length > 160 ? String(v).slice(0, 160) + "…" : v) + "</span>"; } },
           { key: "metric", label: "Metric" }, { key: "before", label: "Before", num: true }, { key: "after", label: "After", num: true },

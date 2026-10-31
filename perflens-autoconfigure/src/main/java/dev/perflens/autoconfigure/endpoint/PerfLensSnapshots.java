@@ -185,7 +185,12 @@ public final class PerfLensSnapshots implements InitializingBean, DisposableBean
         long delay = Math.max(1000, Duration.between(now, next).toMillis());
         scheduler.schedule(() -> {
             try {
-                if (hasData()) log.info("PerfLens scheduled snapshot written to " + write());
+                if (hasData()) {
+                    log.info("PerfLens scheduled snapshot written to " + write());
+                    // each scheduled snapshot then covers exactly one period, so comparing two of them
+                    // (or the current window with the last one) compares like with like
+                    if (storage().isResetAfterScheduledSnapshot()) perfLens.reset();
+                }
             } catch (Exception e) {
                 log.warn("PerfLens scheduled snapshot failed: " + e);
             } finally {

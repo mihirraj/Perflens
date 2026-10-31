@@ -112,6 +112,8 @@ Snapshots are written daily at 18:00 (`perflens.storage.snapshot-cron`; set it t
 - Only traffic-independent metrics are compared: avg/p95 time, SQL queries per request, outbound calls per request, CPU share and error rate. A busier day is not a regression.
 - Also shown: new and resolved findings, improvements, and entrypoints / SQL statements that didn't exist before.
 
+After each **scheduled** snapshot PerfLens starts a fresh window, so each daily snapshot covers exactly one day and comparisons are like for like. Turn this off with `perflens.storage.reset-after-scheduled-snapshot=false`. Manual snapshots never reset; the UI warns when the compared windows overlap.
+
 Tune with `perflens.storage.compare-min-change-percent` (default 25) and `perflens.storage.compare-min-score` (default 1.0).
 
 **Containers:** `./.perflens` lives inside the container and disappears on redeploy. Mount a volume and point `perflens.storage.path` at it to keep a baseline across deploys.
