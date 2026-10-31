@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PerfLens</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --border: #e3e6eb;
+    --accent: #3559e0; --accent-soft: #e8edfd; --code: #f2f4f7;
+    --crit: #c0262d; --high: #d9641e; --med: #b88a00; --low: #5b6b82;
+    --db: #3559e0; --http: #0f8b8d; --other: #a0a7b4; --user: #2f6fd0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1a1f27; --text: #e4e7ec; --muted: #98a2b3; --border: #2b323d;
+      --accent: #7c9cff; --accent-soft: #252e45; --code: #232a35;
+      --crit: #ff6b6b; --high: #ff9f5a; --med: #e7c65a; --low: #98a2b3;
+      --db: #7c9cff; --http: #3fc1c3; --other: #5d6675; --user: #6aa5ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .2px; }
+  header h1 span { color: var(--accent); }
+  nav { display: flex; gap: 2px; flex-wrap: wrap; }
+  nav button { background: none; border: 0; padding: 7px 12px; border-radius: 6px; color: var(--muted); cursor: pointer; font: inherit; }
+  nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .spacer { flex: 1; }
+  .tools { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+  .btn { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+  .btn:hover { border-color: var(--accent); }
+  main { padding: 18px 20px 60px; max-width: 1500px; margin: 0 auto; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .card .k { color: var(--muted); font-size: 12px; }
+  .card .v { font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .muted { color: var(--muted); }
+  .sev { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; color: #fff; letter-spacing: .3px; }
+  .sev.CRITICAL { background: var(--crit); } .sev.HIGH { background: var(--high); } .sev.MEDIUM { background: var(--med); } .sev.LOW { background: var(--low); }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); margin-left: 6px; }
+  .finding { border-left: 4px solid var(--low); }
+  .finding.CRITICAL { border-left-color: var(--crit); } .finding.HIGH { border-left-color: var(--high); } .finding.MEDIUM { border-left-color: var(--med); }
+  .finding .title { font-weight: 600; font-size: 15px; margin-left: 6px; }
+  .finding .loc { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--accent); margin: 4px 0; word-break: break-all; }
+  .finding ul { margin: 6px 0 4px 18px; padding: 0; }
+  .finding li { margin: 3px 0; }
+  details { margin-top: 6px; }
+  summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  code, pre, .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  pre { background: var(--code); padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; margin: 4px 0; position: relative; }
+  pre .copy { position: absolute; top: 4px; right: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap; position: sticky; top: 52px; background: var(--panel); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.row:hover td { background: var(--accent-soft); cursor: pointer; }
+  tr.expand td { background: var(--bg); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; font-size: 13px; }
+  .kv .k { color: var(--muted); }
+  .bar { display: flex; height: 10px; border-radius: 3px; overflow: hidden; min-width: 120px; background: var(--code); }
+  .bar span { display: block; height: 100%; }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; font-size: 12px; color: var(--muted); }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip { border: 1px solid var(--border); border-radius: 14px; padding: 3px 10px; font-size: 12px; cursor: pointer; background: var(--panel); color: var(--text); }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .empty { text-align: center; color: var(--muted); padding: 40px; }
+  #flame { position: relative; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+  .fn { position: absolute; height: 17px; font: 11px/17px ui-monospace, Consolas, monospace; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 3px; border-right: 1px solid var(--panel); border-bottom: 1px solid var(--panel); cursor: pointer; color: #1d2330; }
+  .fn.dim { opacity: .25; }
+  .fn.hit { outline: 2px solid var(--crit); outline-offset: -2px; }
+  #tip { position: fixed; pointer-events: none; background: #111827; color: #f9fafb; padding: 6px 8px; border-radius: 6px; font-size: 12px; max-width: 560px; z-index: 50; display: none; word-break: break-all; }
+  input[type=search] { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 13px; min-width: 260px; }
+  .err { color: var(--crit); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Perf<span>Lens</span></h1>
+  <nav id="tabs"></nav>
+  <div class="spacer"></div>
+  <div class="tools">
+    <span id="updated"></span>
+    <label><input type="checkbox" id="auto" checked> auto-refresh</label>
+    <button class="btn" id="refresh">Refresh</button>
+    <button class="btn" id="snapshot" title="Write the current evidence to a JSON snapshot file">Snapshot</button>
+    <button class="btn" id="reset" title="Clear all collected evidence">Reset</button>
+  </div>
+</header>
+<main id="view"><div class="empty">Loading…</div></main>
+<div id="tip"></div>
+<script>
+(function () {
+  "use strict";
+  var BASE = location.pathname.replace(/\/+$/, "");
+  var TABS = [["findings", "Findings"], ["queries", "Database"], ["methods", "Methods"], ["flame", "CPU flame graph"],
+              ["network", "Network"], ["endpoints", "Entrypoints"], ["jvm", "JVM"]];
+  var state = { tab: (location.hash || "#findings").slice(1), data: null, category: "ALL", sort: {}, open: {}, flameZoom: [], flameSearch: "" };
+  var timer = null;
+
+  // ---------- helpers ----------
+  function esc(v) {
+    if (v === null || v === undefined) return "";
+    return String(v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
+  }
+  function ms(v) { if (v === null || v === undefined) return ""; v = Number(v); return v >= 1000 ? (v / 1000).toFixed(2) + " s" : (v >= 10 ? v.toFixed(0) : v.toFixed(1)) + " ms"; }
+  function num(v) { return v === null || v === undefined ? "" : Number(v).toLocaleString(); }
+  function ago(t) { var s = Math.round((Date.now() - t) / 1000); if (s < 60) return s + "s"; if (s < 3600) return Math.round(s / 60) + "m"; return (s / 3600).toFixed(1) + "h"; }
+  function shortMethod(m) { if (!m) return ""; var p = m.split("("), parts = p[0].split("."); return parts.slice(-2).join(".") + (p[1] ? "(" + p[1] : ""); }
+  function copyBtn(text) { return '<button class="btn copy" data-copy="' + esc(text) + '">copy</button>'; }
+  function isObj(v) { return v && typeof v === "object" && !Array.isArray(v); }
+  function renderValue(v) {
+    if (Array.isArray(v)) {
+      if (!v.length) return '<span class="muted">none</span>';
+      return v.map(function (x) { return '<div class="mono">' + (isObj(x) ? renderKv(x) : esc(x)) + "</div>"; }).join("");
+    }
+    if (isObj(v)) return renderKv(v);
+    if (typeof v === "number") return '<span class="mono">' + esc(Math.round(v * 10) / 10) + "</span>";
+    return '<span class="mono">' + esc(v) + "</span>";
+  }
+  function renderKv(o) {
+    var keys = Object.keys(o); if (!keys.length) return '<span class="muted">none</span>';
+    return '<div class="kv">' + keys.map(function (k) { return '<div class="k">' + esc(k) + "</div><div>" + renderValue(o[k]) + "</div>"; }).join("") + "</div>";
+  }
+  function breakdownBar(sql, http, other) {
+    var t = (sql || 0) + (http || 0) + (other || 0); if (!t) return "";
+    function seg(v, c, label) { return v > 0 ? '<span title="' + label + " " + ms(v) + '" style="width:' + (v * 100 / t) + "%;background:var(--" + c + ')"></span>' : ""; }
+    return '<div class="bar">' + seg(sql, "db", "SQL") + seg(http, "http", "HTTP") + seg(other, "other", "other") + "</div>";
+  }
+  var LEGEND = '<div class="legend"><span><i style="background:var(--db)"></i>SQL</span><span><i style="background:var(--http)"></i>outbound HTTP</span><span><i style="background:var(--other)"></i>code / waiting</span></div>';
+
+  // ---------- exemplars (real executions) ----------
+  function exemplarTable(list, kind) {
+    if (!list || !list.length) return '<div class="muted">No exemplars captured yet.</div>';
+    return list.map(function (e) {
+      var d = e.details || {}, out = ['<div class="panel" style="margin:6px 0;padding:10px 12px">'];
+      out.push("<b>" + ms(e.durationMs) + "</b> <span class='muted'>" + esc(new Date(e.timestamp).toLocaleTimeString()) +
+        (d.entrypoint ? " · " + esc(d.entrypoint) : "") + (d.thread ? " · " + esc(d.thread) : "") + "</span>");
+      if (d.caller) out.push('<div class="mono muted">at ' + esc(d.caller) + "</div>");
+      if (d.args) out.push("<div style='margin-top:4px'><b>Arguments</b>" + renderKv(d.args) + "</div>");
+      if (d.sqlQueries !== undefined) {
+        out.push("<div style='margin-top:4px;display:flex;gap:10px;align-items:center'>" + breakdownBar(d.sqlMs, d.httpMs, d.otherMs) +
+          "<span class='muted'>" + num(d.sqlQueries) + " SQL (" + ms(d.sqlMs) + ") · " + num(d.httpCalls) + " HTTP (" + ms(d.httpMs) + ") · other " + ms(d.otherMs) + "</span></div>");
+      }
+      if (d.executableSql) out.push("<div style='margin-top:4px'><b>Executable SQL</b> <span class='muted'>(real parameters inlined, paste into EXPLAIN ANALYZE)</span><pre>" + copyBtn(d.executableSql) + esc(d.executableSql) + "</pre></div>");
+      if (d.params && d.params.length) out.push("<div class='muted mono'>params: " + esc(d.params.join(", ")) + "</div>");
+      if (d.url) out.push('<div class="mono">' + esc(d.url) + " → status " + esc(d.status) + "</div>");
+      if (d.error) out.push('<div class="err mono">' + esc(d.error) + "</div>");
+      if (d.failed) out.push('<div class="err">failed</div>');
+      if (d.batchSize) out.push('<div class="muted">batch of ' + esc(d.batchSize) + "</div>");
+      out.push("</div>");
+      return out.join("");
+    }).join("");
+  }
+
+  // ---------- views ----------
+  function viewFindings(d) {
+    var o = d.overview, f = d.findings || [];
+    var cats = ["ALL"].concat(Array.from(new Set(f.map(function (x) { return x.category; }))));
+    var s = o.findingsBySeverity || {};
+    var html = ['<div class="cards">',
+      card("Health score", o.healthScore + "<span class='muted' style='font-size:13px'> / 100</span>"),
+      card("Critical / High", (s.CRITICAL || 0) + " / " + (s.HIGH || 0)),
+      card("Medium / Low", (s.MEDIUM || 0) + " / " + (s.LOW || 0)),
+      card("SQL statements", num(o.sqlStatements)),
+      card("CPU samples", num(o.cpuSamples)),
+      card("Observing for", ago(o.observingSince)),
+      "</div>"];
+    html.push('<div class="panel muted" style="font-size:12px">Watching <span class="mono">' + esc((o.basePackages || []).join(", ")) +
+      "</span> · JFR " + esc(o.profiler) + " · parameters captured: <b>" + (o.captureParams ? "yes (masked by name)" : "no") +
+      "</b> · Java " + esc(o.javaVersion) + "</div>");
+    html.push('<div class="filters">' + cats.map(function (c) { return '<span class="chip' + (state.category === c ? " on" : "") + '" data-cat="' + esc(c) + '">' + esc(c) + "</span>"; }).join("") + "</div>");
+    var shown = f.filter(function (x) { return state.category === "ALL" || x.category === state.category; });
+    if (!shown.length) html.push('<div class="panel empty">No findings yet. Exercise the application (send requests, run jobs) and they will appear here.</div>');
+    shown.forEach(function (x) {
+      html.push('<div class="panel finding ' + x.severity + '">');
+      html.push('<span class="sev ' + x.severity + '">' + x.severity + "</span><span class='title'>" + esc(x.title) + "</span><span class='tag'>" + esc(x.rule) + "</span><span class='tag'>score " + esc(x.score) + "</span>");
+      if (x.location) html.push('<div class="loc">' + esc(x.location) + "</div>");
+      html.push("<div>" + esc(x.summary) + "</div>");
+      if (x.suggestions && x.suggestions.length) html.push("<b style='display:block;margin-top:8px'>Suggestions</b><ul>" + x.suggestions.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ul>");
+      html.push("<details><summary>Evidence</summary>" + renderKv(x.evidence || {}) + "</details>");
+      if (x.exemplars && x.exemplars.length) html.push("<details><summary>Real executions (" + x.exemplars.length + ")</summary>" + exemplarTable(x.exemplars) + "</details>");
+      html.push("</div>");
+    });
+    return html.join("");
+  }
+  function card(k, v) { return '<div class="card"><div class="k">' + esc(k) + '</div><div class="v">' + v + "</div></div>"; }
+
+  function table(id, rows, cols, expandFn) {
+    if (!rows || !rows.length) return '<div class="empty">Nothing recorded yet.</div>';
+    var sort = state.sort[id] || { key: "totalMs", dir: -1 };
+    rows = rows.slice().sort(function (a, b) {
+      var x = a[sort.key], y = b[sort.key];
+      if (typeof x === "string" || typeof y === "string") return String(x).localeCompare(String(y)) * sort.dir;
+      return ((x || 0) - (y || 0)) * sort.dir;
+    });
+    var h = ["<table><thead><tr>"];
+    cols.forEach(function (c) { h.push('<th class="' + (c.num ? "num" : "") + '" data-sort="' + id + "|" + c.key + '">' + esc(c.label) + (sort.key === c.key ? (sort.dir < 0 ? " ↓" : " ↑") : "") + "</th>"); });
+    h.push("</tr></thead><tbody>");
+    rows.forEach(function (r, i) {
+      var key = id + ":" + (r[cols[0].key] || i);
+      h.push('<tr class="row" data-open="' + esc(key) + '">');
+      cols.forEach(function (c) { h.push('<td class="' + (c.num ? "num" : "") + '">' + (c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key])) + "</td>"); });
+      h.push("</tr>");
+      if (state.open[key] && expandFn) h.push('<tr class="expand"><td colspan="' + cols.length + '">' + expandFn(r) + "</td></tr>");
+    });
+    h.push("</tbody></table>");
+    return h.join("");
+  }
+  var LAT = [
+    { key: "count", label: "Count", num: true, fmt: num }, { key: "totalMs", label: "Total", num: true, fmt: ms },
+    { key: "avgMs", label: "Avg", num: true, fmt: ms }, { key: "p95Ms", label: "p95", num: true, fmt: ms }, { key: "maxMs", label: "Max", num: true, fmt: ms }];
+
+  function viewQueries(d) {
+    var cols = [{ key: "sql", label: "Statement (normalized)", fmt: function (v) { return '<span class="mono">' + esc(v.length > 220 ? v.slice(0, 220) + "…" : v) + "</span>"; } },
+      { key: "kind", label: "Kind" }].concat(LAT, [{ key: "errors", label: "Errors", num: true, fmt: num }]);
+    return '<div class="panel"><h2>SQL statements</h2><div class="muted" style="margin-bottom:8px">Grouped by fingerprint (literals removed). Click a row for callers and the slowest real executions with their bind parameters.</div>' +
+      table("sql", d.queries, cols, function (r) {
+        return "<b>Full statement</b><pre>" + copyBtn(r.sql) + esc(r.sql) + "</pre><b>Callers</b>" + renderKv(r.callers) + "<b>Slowest executions</b>" + exemplarTable(r.slowest);
+      }) + "</div>";
+  }
+
+  function viewMethods(d) {
+    var hot = '<div class="panel"><h2>CPU hot methods (JFR sampling)</h2><div class="muted" style="margin-bottom:8px">CPU samples attributed to the deepest application method on the stack. Covers all code, including private methods.</div>' +
+      table("hot", d.hotMethods, [
+        { key: "method", label: "Method", fmt: function (v) { return '<span class="mono">' + esc(v) + "</span>"; } },
+        { key: "cpuPercent", label: "CPU %", num: true, fmt: function (v) { return esc(v) + "%"; } },
+        { key: "samples", label: "Samples", num: true, fmt: num },
+        { key: "allocatedMB", label: "Alloc MB (sampled)", num: true }], function (r) {
+        return "<b>Hottest lines</b>" + renderKv(r.topLines) + "<b>Library calls it spends CPU in</b>" + renderKv(r.topCallees);
+      }) + "</div>";
+    var calls = '<div class="panel"><h2>Bean method calls (timing + arguments)</h2><div class="muted" style="margin-bottom:8px">Public methods of Spring beans in your packages. Click a row for the slowest calls with their real arguments and SQL/HTTP breakdown.</div>' +
+      table("methods", d.methods, [{ key: "method", label: "Method", fmt: function (v) { return '<span class="mono">' + esc(shortMethod(v)) + "</span>"; } }].concat(LAT, [{ key: "errors", label: "Errors", num: true, fmt: num }]),
+        function (r) { return '<div class="mono muted">' + esc(r.method) + "</div>" + LEGEND + exemplarTable(r.slowest); }) + "</div>";
+    if (!state.sort.hot) state.sort.hot = { key: "cpuPercent", dir: -1 };
+    return hot + calls;
+  }
+
+  function viewNetwork(d) {
+    var h = d.http || {};
+    var routes = '<div class="panel"><h2>Outbound HTTP (RestClient / RestTemplate)</h2>' +
+      table("http", h.routes, [{ key: "route", label: "Route", fmt: function (v) { return '<span class="mono">' + esc(v) + "</span>"; } }].concat(LAT, [
+        { key: "errors", label: "Errors", num: true, fmt: num },
+        { key: "statuses", label: "Statuses", fmt: function (v) { return '<span class="mono">' + esc(Object.keys(v || {}).map(function (k) { return k + "×" + v[k]; }).join(" ")) + "</span>"; } }]),
+        function (r) { return exemplarTable(r.slowest); }) + "</div>";
+    var sockets = '<div class="panel"><h2>Slow socket I/O (JFR)</h2><div class="muted" style="margin-bottom:8px">Every blocking socket read/write above the threshold, including clients PerfLens does not instrument (Redis, Kafka, JDBC drivers, raw HTTP clients).</div>' +
+      table("sock", h.slowSockets, [{ key: "endpoint", label: "Host:port", fmt: function (v) { return '<span class="mono">' + esc(v) + "</span>"; } },
+        { key: "slowOps", label: "Slow ops", num: true, fmt: num }, { key: "totalMs", label: "Total", num: true, fmt: ms }, { key: "maxMs", label: "Max", num: true, fmt: ms },
+        { key: "bytes", label: "Bytes", num: true, fmt: num }], function (r) { return "<b>Application callers</b>" + renderKv(r.callers); }) + "</div>";
+    return routes + sockets;
+  }
+
+  function viewEndpoints(d) {
+    var cols = [{ key: "entrypoint", label: "Entrypoint", fmt: function (v) { return '<span class="mono">' + esc(v) + "</span>"; } }].concat(LAT, [
+      { key: "avgSqlQueries", label: "SQL/req", num: true }, { key: "avgHttpCalls", label: "HTTP/req", num: true },
+      { key: "split", label: "Where time goes (avg)", fmt: function (v, r) { return breakdownBar(r.avgSqlMs, r.avgHttpMs, Math.max(0, r.avgMs - r.avgSqlMs - r.avgHttpMs)); } }]);
+    return '<div class="panel"><h2>Entrypoints</h2><div class="muted" style="margin-bottom:8px">HTTP routes, plus scheduled jobs / listeners / async work (named after the first application method).</div>' + LEGEND +
+      table("ep", d.endpoints, cols, function (r) { return exemplarTable(r.slowest); }) + "</div>";
+  }
+
+  function viewJvm(d) {
+    var j = d.jvm || {}, g = j.gc || {};
+    var html = ['<div class="cards">', card("Heap used", num(j.heapUsedMB) + " MB" + (j.heapMaxMB ? "<span class='muted' style='font-size:13px'> / " + num(j.heapMaxMB) + "</span>" : "")),
+      card("Threads", num(j.threads)), card("CPUs", num(j.availableProcessors)), card("GC collections", num(g.collections)),
+      card("GC pause total", ms(g.totalPauseMs)), card("GC max pause", ms(g.maxPauseMs)), "</div>"];
+    html.push('<div class="panel"><h2>GC by collector / cause</h2>' + renderKv(g.byCollectorAndCause || {}) + "</div>");
+    html.push('<div class="panel"><h2>Lock contention (synchronized)</h2>' + table("locks", j.locks, [{ key: "where", label: "Monitor @ application frame", fmt: function (v) { return '<span class="mono">' + esc(v) + "</span>"; } },
+      { key: "count", label: "Blocked", num: true, fmt: num }, { key: "totalMs", label: "Total", num: true, fmt: ms }, { key: "maxMs", label: "Max", num: true, fmt: ms }]) + "</div>");
+    html.push('<div class="panel"><h2>Virtual thread pinning</h2>' + table("pin", j.virtualThreadPinning, [{ key: "where", label: "Application frame", fmt: function (v) { return '<span class="mono">' + esc(v) + "</span>"; } },
+      { key: "count", label: "Pinned", num: true, fmt: num }, { key: "totalMs", label: "Total", num: true, fmt: ms }, { key: "maxMs", label: "Max", num: true, fmt: ms }]) + "</div>");
+    html.push('<div class="panel"><h2>Top executing frames (all code)</h2>' + table("leaf", j.topExecutingFrames, [{ key: "name", label: "Frame", fmt: function (v) { return '<span class="mono">' + esc(v) + "</span>"; } }, { key: "value", label: "Samples", num: true, fmt: num }]) + "</div>");
+    html.push('<div class="panel"><h2>Top allocated types (sampled bytes)</h2>' + table("alloc", j.topAllocatedTypesBytes, [{ key: "name", label: "Type", fmt: function (v) { return '<span class="mono">' + esc(v) + "</span>"; } }, { key: "value", label: "Bytes", num: true, fmt: num }]) + "</div>");
+    if (!state.sort.leaf) state.sort.leaf = { key: "value", dir: -1 };
+    if (!state.sort.alloc) state.sort.alloc = { key: "value", dir: -1 };
+    return html.join("");
+  }
+
+  // ---------- flame graph ----------
+  function viewFlame(d) {
+    return '<div class="panel"><div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap"><h2 style="margin:0">CPU flame graph</h2>' +
+      '<input type="search" id="fsearch" placeholder="Highlight frames (e.g. jackson, OrderService)" value="' + esc(state.flameSearch) + '">' +
+      '<button class="btn" id="funzoom">Reset zoom</button><span class="muted" id="fmatch"></span><span class="spacer"></span>' +
+      '<span class="legend"><span><i style="background:var(--user)"></i>your code</span><span><i style="background:#f2a65a"></i>libraries / JDK</span><span><i style="background:#c7ccd4"></i>framework plumbing (collapsed)</span></span></div>' +
+      '<div class="muted" style="margin-bottom:8px;font-size:12px">Root at the top; width = share of CPU samples. Click a frame to zoom. Frames under 0.2% are hidden.</div><div id="flame"></div></div>';
+  }
+  function hashColor(name) {
+    var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+    var hue = 20 + Math.abs(h) % 30, light = 62 + Math.abs(h >> 3) % 14;
+    return "hsl(" + hue + ",85%," + light + "%)";
+  }
+  function frameColor(name, base) {
+    if (name.charAt(0) === "[") return "#c7ccd4";
+    for (var i = 0; i < base.length; i++) if (name.indexOf(base[i] + ".") === 0) return "hsl(214,70%," + (62 + name.length % 12) + "%)";
+    return hashColor(name);
+  }
+  function drawFlame(d) {
+    var el = document.getElementById("flame"); if (!el) return;
+    var root = d.flamegraph; if (!root || !root.value) { el.innerHTML = '<div class="empty">No CPU samples yet (JFR: ' + esc(d.overview.profiler) + ").</div>"; return; }
+    var path = [root], node = root;
+    state.flameZoom.forEach(function (name) { var c = (node.children || []).filter(function (k) { return k.name === name; })[0]; if (c) { node = c; path.push(c); } });
+    var focus = path[path.length - 1], W = el.clientWidth, H = 18, cells = [], base = d.overview.basePackages || [], q = state.flameSearch.toLowerCase(), matched = 0, maxDepth = 0;
+    path.forEach(function (n, i) { cells.push([n, 0, W, i, i < path.length - 1]); });
+    (function walk(n, x, w, depth) {
+      maxDepth = Math.max(maxDepth, depth);
+      var off = x;
+      (n.children || []).forEach(function (c) { var cw = w * c.value / n.value; if (cw >= 0.5) { cells.push([c, off, cw, depth + 1, false]); walk(c, off, cw, depth + 1); } off += cw; });
+    })(focus, 0, W, path.length - 1);
+    el.style.height = (maxDepth + 2) * H + "px";
+    var total = root.value, html = [];
+    cells.forEach(function (c, idx) {
+      var n = c[0], hit = q && n.name.toLowerCase().indexOf(q) >= 0;
+      if (hit && !c[4]) matched += n.value;
+      html.push('<div class="fn' + (hit ? " hit" : "") + (q && !hit ? " dim" : "") + '" data-i="' + idx + '" style="left:' + c[1] + "px;width:" + Math.max(1, c[2]) + "px;top:" + c[3] * H +
+        "px;background:" + frameColor(n.name, base) + '">' + (c[2] > 30 ? esc(n.name) : "") + "</div>");
+    });
+    el.innerHTML = html.join("");
+    var fm = document.getElementById("fmatch"); if (fm) fm.textContent = q ? "matched ≈ " + (matched * 100 / total).toFixed(1) + "% (may double-count recursion)" : "";
+    var tip = document.getElementById("tip");
+    el.onmousemove = function (ev) {
+      var t = ev.target.closest(".fn"); if (!t) { tip.style.display = "none"; return; }
+      var n = cells[t.getAttribute("data-i")][0];
+      tip.innerHTML = esc(n.name) + "<br>" + num(n.value) + " samples · " + (n.value * 100 / total).toFixed(2) + "% of all" + (n.self ? " · self " + num(n.self) : "");
+      tip.style.display = "block"; tip.style.left = Math.min(ev.clientX + 12, window.innerWidth - 580) + "px"; tip.style.top = ev.clientY + 14 + "px";
+    };
+    el.onmouseleave = function () { tip.style.display = "none"; };
+    el.onclick = function (ev) {
+      var t = ev.target.closest(".fn"); if (!t) return;
+      var i = Number(t.getAttribute("data-i")), c = cells[i];
+      if (c[4] || c[0] === root) { state.flameZoom = state.flameZoom.slice(0, c[3]); }
+      else {
+        // rebuild the name path from the root to the clicked cell
+        var names = [], target = c[0];
+        (function find(n, acc) { if (n === target) { names = acc; return true; } return (n.children || []).some(function (k) { return find(k, acc.concat([k.name])); }); })(root, []);
+        state.flameZoom = names;
+      }
+      drawFlame(d);
+    };
+  }
+
+  // ---------- shell ----------
+  function render() {
+    document.getElementById("tabs").innerHTML = TABS.map(function (t) { return '<button data-tab="' + t[0] + '" class="' + (state.tab === t[0] ? "active" : "") + '">' + t[1] + "</button>"; }).join("");
+    var d = state.data, v = document.getElementById("view");
+    if (!d) return;
+    var fn = { findings: viewFindings, queries: viewQueries, methods: viewMethods, flame: viewFlame, network: viewNetwork, endpoints: viewEndpoints, jvm: viewJvm }[state.tab] || viewFindings;
+    var scroll = window.scrollY;
+    v.innerHTML = fn(d);
+    if (state.tab === "flame") drawFlame(d);
+    window.scrollTo(0, scroll);
+  }
+  function load() {
+    return fetch(BASE + "/report", { headers: { Accept: "application/json" }, credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (d) { state.data = d; document.getElementById("updated").textContent = "updated " + new Date().toLocaleTimeString(); render(); })
+      .catch(function (e) { document.getElementById("updated").innerHTML = '<span class="err">load failed: ' + esc(e.message) + "</span>"; });
+  }
+  function post(action) {
+    return fetch(BASE + "/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", credentials: "same-origin" })
+      .then(function (r) { return r.json(); });
+  }
+  function schedule() {
+    clearInterval(timer);
+    // the flame graph and expanded rows are expensive to re-render while reading; refresh slower there
+    if (document.getElementById("auto").checked) timer = setInterval(function () { if (!document.hidden) load(); }, state.tab === "flame" ? 15000 : 5000);
+  }
+
+  document.addEventListener("click", function (ev) {
+    var t = ev.target;
+    if (t.matches("[data-tab]")) { state.tab = t.getAttribute("data-tab"); location.hash = state.tab; render(); schedule(); return; }
+    if (t.matches("[data-cat]")) { state.category = t.getAttribute("data-cat"); render(); return; }
+    if (t.matches("[data-copy]")) { navigator.clipboard && navigator.clipboard.writeText(t.getAttribute("data-copy")); t.textContent = "copied"; ev.stopPropagation(); return; }
+    var th = t.closest("[data-sort]");
+    if (th) { var p = th.getAttribute("data-sort").split("|"), cur = state.sort[p[0]] || {}; state.sort[p[0]] = { key: p[1], dir: cur.key === p[1] ? -cur.dir : -1 }; render(); return; }
+    var row = t.closest("[data-open]");
+    if (row && !t.closest("pre") && !t.closest(".expand")) { var k = row.getAttribute("data-open"); state.open[k] = !state.open[k]; render(); }
+  });
+  document.addEventListener("input", function (ev) { if (ev.target.id === "fsearch") { state.flameSearch = ev.target.value; drawFlame(state.data); } });
+  document.addEventListener("click", function (ev) { if (ev.target.id === "funzoom") { state.flameZoom = []; drawFlame(state.data); } });
+  document.getElementById("refresh").onclick = load;
+  document.getElementById("auto").onchange = schedule;
+  document.getElementById("snapshot").onclick = function () { post("snapshot").then(function (r) { alert(r.file ? "Snapshot written:\n" + r.file : "Snapshot failed: " + JSON.stringify(r)); }); };
+  document.getElementById("reset").onclick = function () { if (confirm("Clear all collected evidence?")) post("reset").then(load); };
+  window.addEventListener("resize", function () { if (state.tab === "flame" && state.data) drawFlame(state.data); });
+  load().then(schedule);
+})();
+</script>
+</body>
+</html>
