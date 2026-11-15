@@ -17,6 +17,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Outbound HTTP calls grouped by method + host + URI template. */
 public final class HttpRegistry {
     private static final int MAX_ROUTES = 1_000;
+    /** Route of the bucket that collects calls once {@link #MAX_ROUTES} distinct routes exist. */
+    public static final String OVERFLOW = "[other routes: route cap reached]";
 
     public static final class HttpStat {
         public final String key;
@@ -59,8 +61,12 @@ public final class HttpRegistry {
 
         HttpStat stat = stats.get(key);
         if (stat == null) {
-            if (stats.size() >= MAX_ROUTES) return;
-            stat = stats.computeIfAbsent(key, k -> new HttpStat(k, method, host, route,
+            // past the cap, keep counting in one bucket rather than silently dropping calls
+            boolean full = stats.size() >= MAX_ROUTES;
+            String statKey = full ? OVERFLOW : key;
+            String statHost = full ? "*" : host;
+            String statRoute = full ? OVERFLOW : route;
+            stat = stats.computeIfAbsent(statKey, k -> new HttpStat(k, method, statHost, statRoute,
                     config.getCapture().getExemplarsPerItem()));
         }
         long micros = (endNanos - startNanos) / 1000;
@@ -73,12 +79,13 @@ public final class HttpRegistry {
         double ms = micros / 1000.0;
         if (ms >= 1.0 && stat.slowest.accepts(ms)) {
             Map<String, Object> d = new LinkedHashMap<>();
-            d.put("url", maskQuery(url));
+            // without value capture the raw path may still hold ids: show the route instead
+            d.put("url", config.getCapture().isParams() ? maskQuery(url) : host + route);
             d.put("status", status);
             d.put("caller", callers.currentUserFrame());
             d.put("entrypoint", window == null ? null : window.entrypoint());
             d.put("thread", Thread.currentThread().getName());
-            if (error != null) d.put("error", error.getClass().getName() + ": " + error.getMessage());
+            if (error != null) d.put("error", ValueRenderer.describeError(error, config.getCapture().isParams()));
             stat.slowest.add(new Exemplar(ms, System.currentTimeMillis(), d));
         }
     }

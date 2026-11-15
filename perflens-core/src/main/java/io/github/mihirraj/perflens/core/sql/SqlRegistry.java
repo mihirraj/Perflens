@@ -134,9 +134,15 @@ public final class SqlRegistry {
 
         if (wantExemplar) {
             Map<String, Object> d = new LinkedHashMap<>();
-            d.put("sql", sql);
-            d.put("params", rendered);
-            d.put("executableSql", SqlNormalizer.inline(sql, rendered));
+            if (config.getCapture().isParams()) {
+                d.put("sql", sql);
+                d.put("params", rendered);
+                d.put("executableSql", SqlNormalizer.inline(sql, rendered));
+            } else {
+                // raw SQL can hold literal values (WHERE id = 1999): keep the literal-free fingerprint
+                d.put("sql", fingerprint(sql));
+                d.put("params", rendered);
+            }
             d.put("caller", caller);
             d.put("entrypoint", window == null ? null : window.entrypoint());
             d.put("thread", Thread.currentThread().getName());

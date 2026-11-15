@@ -17,6 +17,19 @@ import java.util.UUID;
  */
 public final class ValueRenderer {
     public static final String MASKED = "***";
+    private static final int MAX_ERROR_MESSAGE = 300;
+
+    /**
+     * "java.lang.IllegalStateException: message". Without value capture only the exception type:
+     * messages routinely carry the values ("User not found: alice@example.com").
+     */
+    public static String describeError(Throwable error, boolean captureValues) {
+        String type = error.getClass().getName();
+        String msg = captureValues ? error.getMessage() : null;
+        if (msg == null) return type;
+        if (msg.length() > MAX_ERROR_MESSAGE) msg = msg.substring(0, MAX_ERROR_MESSAGE) + "...";
+        return type + ": " + msg;
+    }
 
     private final int maxLength;
     private final List<String> maskNames;

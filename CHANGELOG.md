@@ -12,5 +12,7 @@ First public version.
 - Deterministic suggestions for SQL and hot-method patterns
 - Daily snapshots and a "what got worse" comparison
 - Circuit breaker that pauses collection under JVM memory or GC pressure
-- Real parameter values are not recorded when a `prod` / `production` profile is active, unless enabled explicitly
+- Real parameter values are not recorded when a `prod` / `production` profile is active, unless enabled explicitly. That also removes raw SQL text, outbound URL paths and exception messages from examples
+- Requests are named by route pattern only, never by raw URL; unmatched requests share one `[unmapped]` entry; outbound URLs built by concatenation collapse id segments into `{id}`; endpoint and route tables keep counting in an overflow bucket once full
+- Warning at startup when the app is compiled without `-parameters` (argument masking needs parameter names)
 - Embedded UI at `/actuator/perflens`

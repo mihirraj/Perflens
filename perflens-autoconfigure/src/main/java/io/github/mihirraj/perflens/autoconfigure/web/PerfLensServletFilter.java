@@ -35,7 +35,14 @@ public final class PerfLensServletFilter implements Filter {
             chain.doFilter(req, res);
             return;
         }
-        TraceWindow w = TraceContext.openIfAbsent(http.getMethod() + " " + http.getRequestURI());
+        // Never name the window by its raw URI: paths carry ids, emails and tokens. Entries saved
+        // mid-request ask the resolver, which returns the route pattern once Spring has matched it.
+        String method = http.getMethod();
+        TraceWindow w = TraceContext.openIfAbsent(method + " " + TraceWindow.BEFORE_ROUTING);
+        w.entrypointResolver(() -> {
+            Object pattern = http.getAttribute(BEST_MATCHING_PATTERN);
+            return pattern == null ? null : method + " " + pattern;
+        });
         boolean failed = false;
         try {
             chain.doFilter(req, res);
@@ -45,7 +52,7 @@ public final class PerfLensServletFilter implements Filter {
         } finally {
             try {
                 Object pattern = http.getAttribute(BEST_MATCHING_PATTERN);
-                w.entrypoint(http.getMethod() + " " + (pattern != null ? pattern : "[unmapped] " + http.getRequestURI()));
+                w.entrypoint(method + " " + (pattern != null ? pattern : TraceWindow.UNMAPPED));
                 pl.traces().complete(w, failed || response.getStatus() >= 500);
             } finally {
                 TraceContext.close(w);

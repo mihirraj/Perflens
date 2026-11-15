@@ -64,6 +64,7 @@ public final class MethodRegistry {
     private final ValueRenderer renderer;
     private final Map<Method, MethodStat> stats = new ConcurrentHashMap<>();
     private final long exemplarMinMicros;
+    private volatile boolean parameterNamesWarned;
 
     public MethodRegistry(PerfLensConfig config, ValueRenderer renderer) {
         this.config = config;
@@ -81,8 +82,24 @@ public final class MethodRegistry {
         MethodStat s = stats.get(method);
         if (s != null) return s;
         if (stats.size() >= config.getMethods().getMaxMethods()) return null;
+        warnIfParameterNamesMissing(method);
         return stats.computeIfAbsent(method,
                 m -> new MethodStat(targetClass, m, config.getCapture().getExemplarsPerItem()));
+    }
+
+    /**
+     * Argument masking matches parameter names (password, token, ...). Classes compiled without
+     * {@code -parameters} only report arg0, arg1, so nothing would be masked: say so once.
+     */
+    private void warnIfParameterNamesMissing(Method method) {
+        if (parameterNamesWarned || method.getParameterCount() == 0 || method.getParameters()[0].isNamePresent()) return;
+        parameterNamesWarned = true;
+        if (!config.getCapture().isParams()) return;
+        System.getLogger(MethodRegistry.class.getName()).log(System.Logger.Level.WARNING,
+                "PerfLens: " + method.getDeclaringClass().getName() + " was compiled without -parameters, so argument"
+                        + " names are unknown (arg0, arg1, ...) and perflens.capture.mask-names cannot mask sensitive"
+                        + " arguments. Compile with -parameters (Spring Boot's Maven and Gradle plugins do this by"
+                        + " default) or set perflens.capture.params=false.");
     }
 
     /**
@@ -124,11 +141,7 @@ public final class MethodRegistry {
             d.put("httpMs", round(httpMs));
             d.put("otherMs", round(Math.max(0, ms - sqlMs - httpMs)));
         }
-        if (error != null) {
-            String msg = error.getMessage();
-            if (msg != null && msg.length() > 300) msg = msg.substring(0, 300) + "...";
-            d.put("error", error.getClass().getName() + (msg == null ? "" : ": " + msg));
-        }
+        if (error != null) d.put("error", ValueRenderer.describeError(error, config.getCapture().isParams()));
         stat.slowest.add(new Exemplar(ms, System.currentTimeMillis(), d));
     }
 

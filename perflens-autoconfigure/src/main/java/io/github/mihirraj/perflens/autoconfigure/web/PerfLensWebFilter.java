@@ -36,13 +36,18 @@ public final class PerfLensWebFilter implements WebFilter, Ordered {
         String path = exchange.getRequest().getPath().value();
         if (pl == null || !pl.isCollecting() || path.startsWith(managementBasePath)) return chain.filter(exchange);
         String method = exchange.getRequest().getMethod().name();
-        TraceWindow w = new TraceWindow(method + " " + path);
+        // named by route pattern only, never by the raw path (see PerfLensServletFilter)
+        TraceWindow w = new TraceWindow(method + " " + TraceWindow.BEFORE_ROUTING);
+        w.entrypointResolver(() -> {
+            Object pattern = exchange.getAttribute(BEST_MATCHING_PATTERN);
+            return pattern == null ? null : method + " " + pattern;
+        });
         AtomicBoolean failed = new AtomicBoolean();
         return chain.filter(exchange)
                 .doOnError(e -> failed.set(true))
                 .doFinally(signal -> {
                     Object pattern = exchange.getAttribute(BEST_MATCHING_PATTERN);
-                    w.entrypoint(method + " " + (pattern != null ? pattern.toString() : "[unmapped] " + path));
+                    w.entrypoint(method + " " + (pattern != null ? pattern.toString() : TraceWindow.UNMAPPED));
                     HttpStatusCode status = exchange.getResponse().getStatusCode();
                     pl.traces().complete(w, failed.get() || (status != null && status.is5xxServerError()));
                 })

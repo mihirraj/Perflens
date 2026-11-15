@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Everything that happened inside one logical unit of work (an HTTP request, a @Scheduled run,
@@ -17,6 +18,13 @@ public final class TraceWindow {
     public static final int MAX_HTTP_CALLS = 200;
     public static final int MAX_FINGERPRINTS = 500;
     public static final int SAMPLE_PARAMS = 5;
+    /**
+     * Name of a web request that matched no route. One shared entry, so scanners probing random URLs
+     * cannot fill the endpoint table, and raw URLs (which may hold ids or tokens) are never stored.
+     */
+    public static final String UNMAPPED = "[unmapped]";
+    /** Name of a web request before Spring has matched it to a route, e.g. SQL run from a security filter. */
+    public static final String BEFORE_ROUTING = "(before routing)";
 
     public record HttpCall(long startNanos, long endNanos, String target, int status) {}
 
@@ -32,6 +40,7 @@ public final class TraceWindow {
     public record Repeat(String fingerprint, int count, long micros, String caller, List<String> sampleParams) {}
 
     private volatile String entrypoint;
+    private volatile Supplier<String> resolver;
     private final long startNanos = System.nanoTime();
     private final Map<String, SqlRepeat> sqlRepeats = new HashMap<>();
     private final List<HttpCall> httpCalls = new ArrayList<>();
@@ -92,8 +101,30 @@ public final class TraceWindow {
         if (httpCalls.size() < MAX_HTTP_CALLS) httpCalls.add(call);
     }
 
-    public String entrypoint() { return entrypoint; }
-    public void entrypoint(String name) { this.entrypoint = name; }
+    /**
+     * The window's name. While a resolver is set, it is asked first: web filters open the window
+     * before routing and set a resolver that returns the route pattern ("GET /users/{id}") once
+     * Spring has matched the request, and null until then.
+     */
+    public String entrypoint() {
+        Supplier<String> r = resolver;
+        if (r != null) {
+            String name = r.get();
+            if (name != null) {
+                entrypoint = name;
+                resolver = null;
+            }
+        }
+        return entrypoint;
+    }
+
+    /** Sets the final name and drops any resolver. */
+    public void entrypoint(String name) {
+        this.resolver = null;
+        this.entrypoint = name;
+    }
+
+    public void entrypointResolver(Supplier<String> resolver) { this.resolver = resolver; }
     public long startNanos() { return startNanos; }
     public synchronized List<HttpCall> httpCalls() { return new ArrayList<>(httpCalls); }
     public synchronized int sqlCount() { return sqlCount; }

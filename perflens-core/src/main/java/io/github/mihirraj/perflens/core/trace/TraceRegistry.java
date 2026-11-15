@@ -19,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class TraceRegistry {
     private static final int MAX_ENTRYPOINTS = 500;
+    /** Name of the bucket that collects requests once {@link #MAX_ENTRYPOINTS} distinct entrypoints exist. */
+    public static final String OVERFLOW = "[other entrypoints: entrypoint cap reached]";
     private static final int MAX_NPLUSONE = 1_000;
 
     public static final class EntrypointStat {
@@ -80,30 +82,30 @@ public final class TraceRegistry {
         long micros = (System.nanoTime() - w.startNanos()) / 1000;
         String name = w.entrypoint();
         EntrypointStat ep = entrypoints.get(name);
-        if (ep == null && entrypoints.size() < MAX_ENTRYPOINTS) {
-            ep = entrypoints.computeIfAbsent(name, k -> new EntrypointStat(k, config.getCapture().getExemplarsPerItem()));
+        if (ep == null) {
+            // past the cap, keep counting in one bucket rather than silently dropping requests
+            String key = entrypoints.size() >= MAX_ENTRYPOINTS ? OVERFLOW : name;
+            ep = entrypoints.computeIfAbsent(key, k -> new EntrypointStat(k, config.getCapture().getExemplarsPerItem()));
         }
-        if (ep != null) {
-            synchronized (ep) {
-                ep.latency.record(micros);
-                if (error) ep.errors++;
-                ep.sqlCount += w.sqlCount();
-                ep.sqlMicros += w.sqlMicros();
-                ep.httpCount += w.httpCount();
-                ep.httpMicros += w.httpMicros();
-            }
-            double ms = micros / 1000.0;
-            if (ms >= 1.0 && ep.slowest.accepts(ms)) {
-                Map<String, Object> d = new LinkedHashMap<>();
-                d.put("sqlQueries", w.sqlCount());
-                d.put("sqlMs", w.sqlMicros() / 1000.0);
-                d.put("httpCalls", w.httpCount());
-                d.put("httpMs", w.httpMicros() / 1000.0);
-                d.put("otherMs", Math.max(0, ms - w.sqlMicros() / 1000.0 - w.httpMicros() / 1000.0));
-                d.put("thread", Thread.currentThread().getName());
-                if (error) d.put("failed", true);
-                ep.slowest.add(new Exemplar(ms, System.currentTimeMillis(), d));
-            }
+        synchronized (ep) {
+            ep.latency.record(micros);
+            if (error) ep.errors++;
+            ep.sqlCount += w.sqlCount();
+            ep.sqlMicros += w.sqlMicros();
+            ep.httpCount += w.httpCount();
+            ep.httpMicros += w.httpMicros();
+        }
+        double ms = micros / 1000.0;
+        if (ms >= 1.0 && ep.slowest.accepts(ms)) {
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put("sqlQueries", w.sqlCount());
+            d.put("sqlMs", w.sqlMicros() / 1000.0);
+            d.put("httpCalls", w.httpCount());
+            d.put("httpMs", w.httpMicros() / 1000.0);
+            d.put("otherMs", Math.max(0, ms - w.sqlMicros() / 1000.0 - w.httpMicros() / 1000.0));
+            d.put("thread", Thread.currentThread().getName());
+            if (error) d.put("failed", true);
+            ep.slowest.add(new Exemplar(ms, System.currentTimeMillis(), d));
         }
         detectNPlusOne(w, name);
         detectWaterfall(w, name, micros);

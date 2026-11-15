@@ -82,6 +82,8 @@ Everything in the UI is also available as JSON (see [API](#api)).
 
 *Base packages* default to your `@SpringBootApplication` package. Set `perflens.base-packages` to change them.
 
+**In `@SpringBootTest`:** calls the test makes through `TestRestTemplate` or `WebTestClient` are outbound HTTP too, so they appear under HTTP. Look at the endpoint and finding sections to judge the app itself, or set `perflens.enabled=false` in tests that don't need PerfLens.
+
 Values are rendered **without calling `toString()`**, because on JPA entities that can trigger lazy loading. Entities show as `Order{id=42}`, collections by size plus their first elements, and long strings are truncated.
 
 **About CPU sample counts:** JFR drops a sample whenever it can't walk the thread's stack at that instant. On a Windows dev box with JDK 24 we measured ~50% of the nominal rate for realistic code, and far less inside tight JIT-compiled loops. Percentages stay meaningful, but low-traffic apps need a few minutes of load before a method crosses the hot-method thresholds (`perflens.jfr.min-samples`, `perflens.jfr.hot-method-percent`). JDK 25's cooperative sampling (JEP 518) improves accuracy. The overview reports `jfrEvents` and `jfrHandlerErrors` so you can check that the collector is healthy.
@@ -114,7 +116,13 @@ Run it yourself:
 PerfLens targets **dev and staging first**, so it captures real values by default:
 
 - Values whose parameter name or SQL column matches `perflens.capture.mask-names` are replaced with `***`. The defaults cover password, secret, token, apikey, authorization, ssn, card, cvv, iban and pin. Query-string params on outbound URLs are masked the same way.
-- **When a `prod` or `production` profile is active, values are not recorded** unless you set `perflens.capture.params=true` explicitly. Statements and method signatures are still recorded. The startup log says when this applies. Change the profile names with `perflens.capture.off-in-profiles`. If production runs without such a profile, set `perflens.capture.params=false` yourself.
+- **When a `prod` or `production` profile is active, values are not recorded** unless you set `perflens.capture.params=true` explicitly. The startup log says when this applies. Change the profile names with `perflens.capture.off-in-profiles`. If production runs without such a profile, set `perflens.capture.params=false` yourself. Without value capture:
+  - SQL examples show the statement with literals removed (`WHERE id = ?`), no bind values and no executable statement
+  - method arguments show as `?`
+  - outbound calls show the route (`/items/{id}`), not the URL
+  - errors show the exception type, not its message
+- Requests are always named by their route pattern (`GET /users/{id}`), never by the raw URL, in every mode. Requests that match no route share one `[unmapped]` entry. Outbound URLs built by string concatenation have numeric, UUID and long hex segments replaced by `{id}`.
+- Argument masking matches parameter names, so the app must be compiled with `-parameters` (Spring Boot's Maven and Gradle plugins do this by default). PerfLens logs a warning if it isn't.
 - Exposure: if the app has **not** configured `management.endpoints.web.exposure.include`, PerfLens exposes `health,perflens`. If you configured exposure yourself, add `perflens` to it. Turn this behaviour off with `perflens.auto-expose=false`.
 - The UI and API are a normal actuator endpoint, so they follow your Spring Security rules and management port. An `/actuator/**` permit-all rule exposes PerfLens too.
 
