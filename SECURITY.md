@@ -3,7 +3,7 @@
 PerfLens records SQL statements, bind parameters and method arguments from the application it runs in, and serves them over an actuator endpoint. Two things follow from that:
 
 - **Protect the endpoint.** `/actuator/perflens` follows your Spring Security rules and management port like any actuator endpoint. Don't expose it publicly.
-- **Turn off value capture in production** with `perflens.capture.params=false`, or extend `perflens.capture.mask-names` to cover your sensitive fields.
+- **Don't record values in production.** PerfLens stops recording them when a `prod` or `production` profile is active. If your production runs without such a profile, set `perflens.capture.params=false`, or extend `perflens.capture.mask-names` to cover your sensitive fields.
 
 ## Reporting a vulnerability
 

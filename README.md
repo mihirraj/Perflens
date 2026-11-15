@@ -15,7 +15,7 @@ No `-javaagent`, no APM server, no database to run.
 - **JVM**: GC pauses, lock contention, virtual-thread pinning, allocation hotspots
 - **"What got worse"**: compare today with any earlier snapshot
 
-> **Status: early (0.1, not yet on Maven Central).** It targets dev and staging first and records real parameter values by default. Read [Privacy and safety](#privacy-and-safety) before turning it on in production.
+> **Status: early (0.1, not yet on Maven Central).** It targets dev and staging first and records real parameter values there. Read [Privacy and safety](#privacy-and-safety) before turning it on in production.
 
 ## Quick start
 
@@ -114,7 +114,7 @@ Run it yourself:
 PerfLens targets **dev and staging first**, so it captures real values by default:
 
 - Values whose parameter name or SQL column matches `perflens.capture.mask-names` are replaced with `***`. The defaults cover password, secret, token, apikey, authorization, ssn, card, cvv, iban and pin. Query-string params on outbound URLs are masked the same way.
-- **For production, set `perflens.capture.params=false`.** Statements and method signatures are still recorded, but values are not.
+- **When a `prod` or `production` profile is active, values are not recorded** unless you set `perflens.capture.params=true` explicitly. Statements and method signatures are still recorded. The startup log says when this applies. Change the profile names with `perflens.capture.off-in-profiles`. If production runs without such a profile, set `perflens.capture.params=false` yourself.
 - Exposure: if the app has **not** configured `management.endpoints.web.exposure.include`, PerfLens exposes `health,perflens`. If you configured exposure yourself, add `perflens` to it. Turn this behaviour off with `perflens.auto-expose=false`.
 - The UI and API are a normal actuator endpoint, so they follow your Spring Security rules and management port. An `/actuator/**` permit-all rule exposes PerfLens too.
 
@@ -141,7 +141,9 @@ Everything is optional:
 ```properties
 perflens.enabled=true
 perflens.base-packages=com.acme
+# default: true, but false when one of these profiles is active
 perflens.capture.params=true
+perflens.capture.off-in-profiles=prod,production
 perflens.capture.mask-names=password,secret,token,ssn
 perflens.capture.exemplars-per-item=5
 perflens.sql.enabled=true

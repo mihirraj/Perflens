@@ -12,4 +12,5 @@ First public version.
 - Deterministic suggestions for SQL and hot-method patterns
 - Daily snapshots and a "what got worse" comparison
 - Circuit breaker that pauses collection under JVM memory or GC pressure
+- Real parameter values are not recorded when a `prod` / `production` profile is active, unless enabled explicitly
 - Embedded UI at `/actuator/perflens`

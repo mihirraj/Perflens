@@ -110,6 +110,11 @@ public class PerfLensAutoConfiguration {
             log.info("PerfLens is watching " + perfLens.callers().basePackages() + " (JFR: "
                     + perfLens.profiler().status() + ", params captured: " + perfLens.config().getCapture().isParams()
                     + "). UI: http://localhost:" + port + base + "/perflens");
+            String offReason = env.getProperty(PerfLensEnvironmentPostProcessor.CAPTURE_OFF_REASON);
+            if (offReason != null) {
+                log.info("PerfLens is not recording parameter and argument values because " + offReason
+                        + ". Set perflens.capture.params=true to record them anyway.");
+            }
         };
     }
 
