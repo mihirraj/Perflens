@@ -1,1 +1,1 @@
-org.springframework.boot.env.EnvironmentPostProcessor=dev.perflens.autoconfigure.PerfLensEnvironmentPostProcessor
+org.springframework.boot.env.EnvironmentPostProcessor=io.github.mihirraj.perflens.autoconfigure.PerfLensEnvironmentPostProcessor

@@ -1,18 +1,35 @@
 # PerfLens
 
-A performance advisor that runs **inside your Spring Boot app**: add one dependency and it starts collecting evidence, then tells you what is slow, where in your code, and with which real inputs.
+[![CI](https://github.com/mihirraj/Perflens/actions/workflows/ci.yml/badge.svg)](https://github.com/mihirraj/Perflens/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-- **Slow queries with their real bind parameters**, including a copy-paste-ready statement for `EXPLAIN ANALYZE`
-- **N+1 queries**: the statement, how many times per request, and the exact line that triggers them
-- **Hot methods (CPU, via JDK Flight Recorder)**: which library call and which line burn the CPU, with concrete fix suggestions
-- **Slow method calls with their arguments**, with each call split into SQL / HTTP / other time
-- **Network**: slow or failing outbound calls, sequential call waterfalls, slow raw socket I/O
+A performance advisor that runs **inside your Spring Boot app**. Add one dependency, start the app, and open `/actuator/perflens`. PerfLens tells you what is slow, where in your code, and with which real inputs, and suggests a fix.
+
+No `-javaagent`, no APM server, no database to run.
+
+- **Slow queries with their real bind parameters**, plus a copy-paste-ready statement for `EXPLAIN ANALYZE`
+- **N+1 queries**: the statement, how many times per request, and the line that triggers them (servlet and WebFlux)
+- **Hot methods** (CPU, via JDK Flight Recorder): which method and line burn the CPU, with concrete suggestions
+- **Slow method calls with their arguments**, each split into SQL / HTTP / other time
+- **Network**: slow or failing outbound calls, sequential call "waterfalls" that could run in parallel, slow raw socket I/O
 - **JVM**: GC pauses, lock contention, virtual-thread pinning, allocation hotspots
-- **Embedded UI** at `/actuator/perflens`
+- **"What got worse"**: compare today with any earlier snapshot
 
-No `-javaagent`, no external server, no database.
+> **Status: early (0.1, not yet on Maven Central).** It targets dev and staging first and records real parameter values by default. Read [Privacy and safety](#privacy-and-safety) before turning it on in production.
 
 ## Quick start
+
+Requirements: **Java 17+** on a HotSpot JVM (for JFR), **Spring Boot 3.5**.
+
+PerfLens is not on Maven Central yet, so install it to your local Maven repository first:
+
+```bash
+git clone https://github.com/mihirraj/Perflens.git
+cd Perflens
+./mvnw install -DskipTests        # Windows: mvnw.cmd install -DskipTests
+```
+
+Then add the starter to your app:
 
 ```xml
 <dependency>
@@ -22,62 +39,74 @@ No `-javaagent`, no external server, no database.
 </dependency>
 ```
 
+```kotlin
+// Gradle: add mavenLocal() to repositories
+implementation("io.github.mihirraj:perflens-spring-boot-starter:0.1.0-SNAPSHOT")
+```
+
 Start the app and open `http://localhost:8080/actuator/perflens`. The startup log prints the exact URL.
 
-Requirements: Java 17+ on a HotSpot JVM (JFR), Spring Boot 3.5.
+### Try the demo first
 
-### Try the demo
-
-Needs only a JDK 17+ (`JAVA_HOME`). The Maven wrapper downloads Maven itself.
+The repository has a demo shop with deliberate problems: N+1 queries, a slow self-join, `LOWER(col) LIKE '%x%'`, `new ObjectMapper()` in a loop, three sequential downstream calls, and a flaky dependency. A built-in load generator drives traffic, so findings appear within a minute or two.
 
 ```bash
-./mvnw install            # Windows: mvnw.cmd install   (add -DskipTests for a faster build)
+./mvnw install -DskipTests
 java -jar perflens-demo/target/perflens-demo-0.1.0-SNAPSHOT.jar
 # open http://localhost:8080/actuator/perflens
 ```
 
-The demo shop has deliberate problems (N+1, slow self-join, `LOWER(col) LIKE '%x%'`, `new ObjectMapper()` in a loop, three sequential downstream calls, a flaky dependency). A built-in load generator drives traffic.
+## What you see
+
+The UI is a single page served by the actuator endpoint:
+
+- **Findings**: ranked problems with the evidence behind each (real parameters, caller line, counts, timings) and suggested fixes
+- **Queries, Methods, HTTP, Endpoints**: the raw evidence, sortable, with the slowest executions kept as examples
+- **Flame graph**: where CPU time goes, by method
+- **JVM**: GC, locks, virtual-thread pinning, top allocated types
+- **Changes**: regressions, improvements, new and resolved findings since a snapshot
+
+Everything in the UI is also available as JSON (see [API](#api)).
 
 ## How it collects evidence
 
 | What | How | Limits |
 |---|---|---|
 | SQL, bind params, timing, pool wait | wraps every `DataSource` bean with [datasource-proxy](https://github.com/jdbc-observations/datasource-proxy) | |
-| R2DBC SQL, bind params, timing | wraps every R2DBC `ConnectionFactory` with [r2dbc-proxy](https://github.com/r2dbc/r2dbc-proxy), **opt-in: add `io.r2dbc:r2dbc-proxy`** to your app | No per-request N+1 detection yet: reactive pipelines hop threads, so SQL can't be tied to its request |
-| WebFlux routes | `WebFilter` timing each route by its template | Per-request SQL/HTTP breakdown is servlet-only for now |
-| Method timing + arguments | Spring AOP advisor on public methods of beans in your base packages | Spring AOP can't see private methods or `this.foo()` self-calls. Final classes are skipped, and so are methods returning `Mono`/`Flux`/`CompletableFuture`, where timing would only measure pipeline assembly. |
+| R2DBC SQL, bind params, timing | wraps every R2DBC `ConnectionFactory` with [r2dbc-proxy](https://github.com/r2dbc/r2dbc-proxy). **Opt-in: add `io.r2dbc:r2dbc-proxy`** to your app | For N+1 findings the caller line is unknown: reactive queries run after the method that built them has returned |
+| Request context (servlet) | servlet filter per request; the first application method opens a context for jobs, listeners and async work | ThreadLocal: `@Async` / `CompletableFuture` hand-offs start a new context |
+| Request context (WebFlux) | `WebFilter` puts the request context into the Reactor context; R2DBC queries and `WebClient` calls made for the request are attributed to it | |
+| Method timing + arguments | Spring AOP advisor on public methods of beans in your base packages | Can't see private methods or `this.foo()` self-calls. Skips final classes, and methods returning `Mono`/`Flux`/`CompletableFuture` (their timing would only measure pipeline assembly) |
 | CPU / allocation / locks / GC / sockets | in-process JFR `RecordingStream` | HotSpot JVMs; ~1 s delay |
-| Outbound HTTP | Spring's built-in observations for `RestClient`, `RestTemplate` and `WebClient` built from Boot's builders | Clients created with `new RestTemplate()` / `WebClient.create()` bypass observations; their socket waits still show under *Slow socket I/O* |
-| Request context | servlet filter per request; the first application method opens a context for jobs, listeners and async work | ThreadLocal: async hand-offs start a new context |
+| Outbound HTTP | Spring's built-in observations for `RestClient`, `RestTemplate` and `WebClient` | Only clients built from Boot's auto-configured builders. `new RestTemplate()` / `WebClient.create()` bypass observations; their socket waits still show under *Slow socket I/O* |
 
-*Base packages* default to your `@SpringBootApplication` package.
+*Base packages* default to your `@SpringBootApplication` package. Set `perflens.base-packages` to change them.
 
-**About CPU sample counts:** JFR drops a sample whenever it can't walk the thread's stack at that instant. On a Windows dev box with JDK 24 we measured ~50% of the nominal rate for realistic code, and far less for tight JIT-compiled loops (for example inside an in-memory database). Percentages remain meaningful, but low-traffic apps need a few minutes of load before a method crosses the hot-method thresholds (`perflens.jfr.min-samples`, `perflens.jfr.hot-method-percent`). JDK 25's cooperative sampling (JEP 518) improves accuracy. The overview reports `jfrEvents` and `jfrHandlerErrors` so you can check that the collector is healthy.
+Values are rendered **without calling `toString()`**, because on JPA entities that can trigger lazy loading. Entities show as `Order{id=42}`, collections by size plus their first elements, and long strings are truncated.
 
-Argument and parameter values are rendered **without calling `toString()`**, because on JPA entities that can trigger lazy loading. Entities are shown as `Order{id=42}`, collections by size plus their first elements, and long strings are truncated.
+**About CPU sample counts:** JFR drops a sample whenever it can't walk the thread's stack at that instant. On a Windows dev box with JDK 24 we measured ~50% of the nominal rate for realistic code, and far less inside tight JIT-compiled loops. Percentages stay meaningful, but low-traffic apps need a few minutes of load before a method crosses the hot-method thresholds (`perflens.jfr.min-samples`, `perflens.jfr.hot-method-percent`). JDK 25's cooperative sampling (JEP 518) improves accuracy. The overview reports `jfrEvents` and `jfrHandlerErrors` so you can check that the collector is healthy.
 
-## Overhead (measured)
+## Overhead
 
 `OverheadBenchmark` in the demo runs the same closed-loop workload (4 client threads, 15 s warm-up, 30 s measurement) with PerfLens off and on, alternating off/on/off/on. Measured on a Windows 11 laptop with JDK 24:
 
-| Setting | Throughput | CPU per request | p50 | p99 |
-|---|---|---|---|---|
-| PerfLens on (all collectors), v0.1 | −9.6% | +10.5% (+0.086 ms) | +0.17 ms | +0.09 ms |
-| PerfLens on, JFR disabled, v0.1 | −12.7% | +11.3% (+0.09 ms) | +0.19 ms | +0.21 ms |
-| **PerfLens on (all collectors), current** | −9.3% | **+6.2% (+0.05 ms)** | **+0.11 ms** | +0.18 ms |
-
-The improvement came from profiling the benchmark itself: every hook was doing a full Spring bean lookup (`ObjectProvider.getIfAvailable()`) on each SQL statement and method call. It now resolves once and caches the bean. Throughput numbers vary by a few percent between runs; CPU per request is the most stable metric.
+| Setting | Throughput | CPU per request | p50 latency |
+|---|---|---|---|
+| All collectors on | −5 to −6% | **+5 to +6% (+0.05 ms)** | +0.11 ms |
+| Method timing off | same | same | same |
+| SQL interception off | ≈0 | ≈0 | ≈0 |
 
 How to read this:
-- **This workload is a deliberate worst case.** Requests hit an in-memory H2 database and cost only ~0.8 ms of CPU each, yet run ~40 SQL statements each (the demo's N+1), so per-statement instrumentation dominates.
-- **The cost is a fixed ~2–4 µs per instrumented operation** (JDBC statement, bean method call), not a percentage. A typical 10–100 ms request with tens of queries pays the same ~0.1–0.2 ms, i.e. well under 1%.
-- **JFR sampling is not where the cost goes.** Disabling it changes nothing measurable; the cost is in the JDBC proxy and method hooks, which are the next optimization target.
+
+- **This workload is a deliberate worst case.** Requests hit an in-memory H2 database, cost only ~0.8 ms of CPU each, and run ~40 SQL statements each (the demo's N+1).
+- **The cost is a fixed ~1–2 µs per SQL statement**, not a percentage. About two thirds of it is datasource-proxy's own proxying; method timing and JFR sampling cost nothing measurable. Against a real database, where a statement takes 0.1 ms to several ms, that is well under 1%.
 
 Run it yourself:
 
 ```bash
 ./mvnw -pl perflens-demo test -Dtest=OverheadBenchmark -Dsurefire.failIfNoSpecifiedTests=false -Dbenchmark=true
-# compare variants: -Dbench.on=perflens.jfr.enabled=false
+# switch collectors off for the 'on' runs (';'-separated):
+#   -Dbench.on="perflens.methods.enabled=false;perflens.jfr.enabled=false"
 ```
 
 ## Privacy and safety
@@ -85,9 +114,25 @@ Run it yourself:
 PerfLens targets **dev and staging first**, so it captures real values by default:
 
 - Values whose parameter name or SQL column matches `perflens.capture.mask-names` are replaced with `***`. The defaults cover password, secret, token, apikey, authorization, ssn, card, cvv, iban and pin. Query-string params on outbound URLs are masked the same way.
-- `perflens.capture.params=false` turns off value capture completely. Do this for production.
+- **For production, set `perflens.capture.params=false`.** Statements and method signatures are still recorded, but values are not.
 - Exposure: if the app has **not** configured `management.endpoints.web.exposure.include`, PerfLens exposes `health,perflens`. If you configured exposure yourself, add `perflens` to it. Turn this behaviour off with `perflens.auto-expose=false`.
-- The UI and API are a normal actuator endpoint, so they follow your Spring Security rules and management port. Note that an `/actuator/**` permit-all rule exposes PerfLens too.
+- The UI and API are a normal actuator endpoint, so they follow your Spring Security rules and management port. An `/actuator/**` permit-all rule exposes PerfLens too.
+
+### Circuit breaker
+
+PerfLens checks the host JVM every 5 s. If old-generation occupancy after GC stays above 85%, or GC takes more than 10% of wall time, for two checks in a row, it stops JFR, frees its flame-graph memory and stops recording. The UI shows a *PAUSED* banner with the reason. Collection resumes after six consecutive calm checks (about 30 s) with heap at least 15 points under the limit.
+
+## Snapshots and "what got worse"
+
+Snapshots are gzipped JSON files written daily at 18:00 (`perflens.storage.snapshot-cron`; `-` turns this off), on graceful shutdown, and on demand. Each records the application name, version and git commit when `git.properties` / `build-info` are available. The **Changes** tab compares the current state with any snapshot:
+
+- **Regressions** are ranked by `relative change × ln(1 + ms consumed now)`, so a +300% on something that barely runs ranks low.
+- Only traffic-independent metrics are compared: avg/p95 time, SQL queries per request, outbound calls per request, CPU share and error rate. A busier day is not a regression.
+- Also shown: new and resolved findings, improvements, and entrypoints / SQL statements that didn't exist before.
+
+After each **scheduled** snapshot PerfLens starts a fresh window, so each daily snapshot covers exactly one day. Turn this off with `perflens.storage.reset-after-scheduled-snapshot=false`. Manual snapshots never reset; the UI warns when the compared windows overlap. Tune with `perflens.storage.compare-min-change-percent` (default 25) and `perflens.storage.compare-min-score` (default 1.0).
+
+**Containers:** `./.perflens` lives inside the container and disappears on redeploy. Mount a volume and point `perflens.storage.path` at it to keep a baseline across deploys.
 
 ## Configuration
 
@@ -99,23 +144,23 @@ perflens.base-packages=com.acme
 perflens.capture.params=true
 perflens.capture.mask-names=password,secret,token,ssn
 perflens.capture.exemplars-per-item=5
+perflens.sql.enabled=true
 perflens.sql.slow-query-threshold=100ms
 perflens.sql.nplusone-threshold=10
 perflens.sql.pool-wait-threshold=20ms
+perflens.methods.enabled=true
 perflens.methods.slow-threshold=300ms
+perflens.http.enabled=true
 perflens.http.slow-threshold=500ms
 perflens.http.slow-endpoint-threshold=1000ms
-perflens.jfr.cpu-sample-interval=20ms
+perflens.jfr.enabled=true
+perflens.jfr.cpu-sample-interval=10ms
 perflens.jfr.hot-method-percent=10
 perflens.storage.path=./.perflens
 perflens.storage.retention-days=14
 perflens.circuit-breaker.max-heap-after-gc-percent=85
 perflens.circuit-breaker.max-gc-time-percent=10
 ```
-
-### Circuit breaker
-
-PerfLens checks the host JVM every 5 s. If old-generation occupancy after GC stays above 85%, or GC takes more than 10% of wall time, for two checks in a row, it stops JFR, frees its flame-graph memory and stops recording. The UI shows a *PAUSED* banner with the reason. Collection resumes after six consecutive calm checks (about 30 s) with heap at least 15 points under the limit.
 
 ## API
 
@@ -127,28 +172,27 @@ PerfLens checks the host JVM every 5 s. If old-generation occupancy after GC sta
 | `GET /actuator/perflens/flamegraph` | CPU tree (d3-flame-graph format) |
 | `GET /actuator/perflens/snapshots` | stored snapshots, newest first |
 | `GET /actuator/perflens/compare?baseline=<name>` | what changed since a snapshot (newest when omitted) |
-| `POST /actuator/perflens/snapshot` | write a gzipped JSON snapshot to `perflens.storage.path` |
+| `POST /actuator/perflens/snapshot` | write a snapshot to `perflens.storage.path` |
 | `POST /actuator/perflens/reset` | clear collected evidence |
-
-## Snapshots and "what got worse"
-
-Snapshots are written daily at 18:00 (`perflens.storage.snapshot-cron`; set it to `-` to turn this off), on graceful shutdown, and on demand. Each one records the application name, version and git commit when `git.properties` / `build-info` are available. The **Changes** tab compares the current state with any snapshot:
-
-- **Regressions** are ranked by `relative change × ln(1 + ms consumed now)`, so a +300% on something that barely runs ranks low.
-- Only traffic-independent metrics are compared: avg/p95 time, SQL queries per request, outbound calls per request, CPU share and error rate. A busier day is not a regression.
-- Also shown: new and resolved findings, improvements, and entrypoints / SQL statements that didn't exist before.
-
-After each **scheduled** snapshot PerfLens starts a fresh window, so each daily snapshot covers exactly one day and comparisons are like for like. Turn this off with `perflens.storage.reset-after-scheduled-snapshot=false`. Manual snapshots never reset; the UI warns when the compared windows overlap.
-
-Tune with `perflens.storage.compare-min-change-percent` (default 25) and `perflens.storage.compare-min-score` (default 1.0).
-
-**Containers:** `./.perflens` lives inside the container and disappears on redeploy. Mount a volume and point `perflens.storage.path` at it to keep a baseline across deploys.
 
 ## Modules
 
 - `perflens-core`: plain-JDK engine (JFR profiler, SQL fingerprinting, registries, rules, suggestion catalog). No Spring.
-- `perflens-autoconfigure`: Spring Boot wiring (DataSource proxy, method advisor, servlet filter, observation handler, actuator endpoint, UI).
+- `perflens-autoconfigure`: Spring Boot wiring (DataSource and R2DBC proxies, method advisor, servlet and WebFlux filters, observation handlers, actuator endpoint, UI).
 - `perflens-spring-boot-starter`: the one dependency to add.
 - `perflens-demo`: sample app plus an end-to-end test that checks every planted bottleneck is reported.
 
-Suggestions come from deterministic rules: `rules/SqlAdvisor` and `rules/HotMethodAdvisor` in core. To add a pattern, add an entry there.
+## Roadmap
+
+- Publish to Maven Central
+- Spring Boot 4 support
+- Lower per-statement JDBC overhead (replace datasource-proxy with direct wrappers)
+- More suggestion patterns
+
+## Contributing
+
+Bug reports, new suggestion patterns and fixes are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and send a change. Suggestions come from deterministic rules in `perflens-core` (`rules/SqlAdvisor`, `rules/HotMethodAdvisor`), and adding a pattern is a good first contribution.
+
+## License
+
+[MIT](LICENSE)
