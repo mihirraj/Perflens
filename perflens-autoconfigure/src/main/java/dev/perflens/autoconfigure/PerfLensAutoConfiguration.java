@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.perflens.autoconfigure.endpoint.PerfLensEndpoint;
 import dev.perflens.autoconfigure.endpoint.PerfLensSnapshots;
 import dev.perflens.autoconfigure.http.PerfLensClientObservationHandler;
+import dev.perflens.autoconfigure.http.PerfLensWebClientCustomizer;
 import dev.perflens.autoconfigure.http.PerfLensWebClientObservationHandler;
 import dev.perflens.autoconfigure.jdbc.PerfLensDataSourcePostProcessor;
 import dev.perflens.autoconfigure.method.PerfLensMethodAdvisor;
@@ -187,8 +188,14 @@ public class PerfLensAutoConfiguration {
     @ConditionalOnBooleanProperty(name = "perflens.http.enabled", matchIfMissing = true)
     static class WebClientConfiguration {
         @Bean
-        PerfLensWebClientObservationHandler perfLensWebClientObservationHandler(ObjectProvider<PerfLens> perfLens) {
-            return new PerfLensWebClientObservationHandler(perfLens);
+        PerfLensWebClientObservationHandler perfLensWebClientObservationHandler(ObjectProvider<PerfLens> perfLens,
+                                                                                PerfLensWebClientCustomizer reactiveWindows) {
+            return new PerfLensWebClientObservationHandler(perfLens, reactiveWindows);
+        }
+
+        @Bean
+        PerfLensWebClientCustomizer perfLensWebClientCustomizer() {
+            return new PerfLensWebClientCustomizer();
         }
     }
 }

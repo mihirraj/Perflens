@@ -63,4 +63,41 @@ class ReactiveR2dbcIntegrationTest {
         report.get("findings").forEach(f -> rules.add(f.get("rule").asText()));
         assertThat(rules).contains("DB-SLOW-QUERY");
     }
+
+    @Test
+    void attributesR2dbcQueriesAndWebClientCallsToTheirWebFluxRequest() throws Exception {
+        WebTestClient client = web.mutate().responseTimeout(Duration.ofSeconds(30)).build();
+        for (int i = 0; i < 3; i++) {
+            client.get().uri("/items/n-plus-one").exchange().expectStatus().isOk().expectBody(String.class).isEqualTo("12");
+            client.get().uri("/items/chain").exchange().expectStatus().isOk();
+        }
+
+        byte[] body = client.get().uri("/actuator/perflens/report").exchange()
+                .expectStatus().isOk().expectBody().returnResult().getResponseBody();
+        JsonNode report = new ObjectMapper().readTree(body);
+
+        // the 12 queries, completed concurrently on several threads, all count towards their request
+        JsonNode nPlusOne = endpoint(report, "GET /items/n-plus-one");
+        assertThat(nPlusOne.get("avgSqlQueries").asDouble()).isEqualTo(12.0);
+
+        JsonNode finding = null;
+        for (JsonNode f : report.get("findings")) {
+            if (f.get("rule").asText().equals("DB-N-PLUS-ONE")
+                    && f.at("/evidence/entrypoint").asText().equals("GET /items/n-plus-one")) finding = f;
+        }
+        assertThat(finding).as("reactive N+1 finding; findings=%s", report.get("findings")).isNotNull();
+        assertThat(finding.at("/evidence/maxPerRequest").asLong()).isEqualTo(12);
+        assertThat(finding.at("/evidence/sql").asText()).contains("FROM ITEM WHERE ID = $1");
+
+        // WebClient calls are attributed to the WebFlux request that made them
+        JsonNode chain = endpoint(report, "GET /items/chain");
+        assertThat(chain.get("avgHttpCalls").asDouble()).isEqualTo(3.0);
+        // and the downstream requests' own queries stay with the downstream route
+        assertThat(chain.get("avgSqlQueries").asDouble()).isEqualTo(0.0);
+    }
+
+    private static JsonNode endpoint(JsonNode report, String entrypoint) {
+        for (JsonNode e : report.get("endpoints")) if (e.get("entrypoint").asText().equals(entrypoint)) return e;
+        throw new AssertionError(entrypoint + " not in " + report.get("endpoints"));
+    }
 }

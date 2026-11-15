@@ -7,6 +7,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.core.env.Environment;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -43,9 +46,27 @@ public class ReactiveApp {
     @RestController
     public static class ItemController {
         private final ItemService items;
+        private final WebClient.Builder webClient;
+        private final Environment env;
 
-        public ItemController(ItemService items) {
+        public ItemController(ItemService items, WebClient.Builder webClient, Environment env) {
             this.items = items;
+            this.webClient = webClient;
+            this.env = env;
+        }
+
+        /** Reactive N+1: one query per element, run concurrently by flatMap on several threads. */
+        @GetMapping("/items/n-plus-one")
+        public Mono<Long> nPlusOne() {
+            return Flux.range(0, 12).flatMap(i -> items.find(i % 3 + 1), 4).count();
+        }
+
+        /** Three sequential WebClient calls inside one WebFlux request. */
+        @GetMapping("/items/chain")
+        public Mono<String> chain() {
+            WebClient client = webClient.baseUrl("http://localhost:" + env.getProperty("local.server.port")).build();
+            Mono<String> call = client.get().uri("/items/{id}", 1).retrieve().bodyToMono(String.class);
+            return call.then(call).then(call);
         }
 
         @GetMapping("/items/{id}")

@@ -13,18 +13,20 @@ import org.springframework.web.reactive.function.client.ClientResponse;
 import java.net.URI;
 
 /**
- * Same as {@link PerfLensClientObservationHandler} for WebClient. The trace window is captured
- * when the call starts (on the subscribing thread); the call may complete on a Netty thread, so
- * the window is passed along in the observation context instead of read from a ThreadLocal.
+ * Same as {@link PerfLensClientObservationHandler} for WebClient. The call may complete on a Netty
+ * thread, so the trace window is captured when it starts: from the ThreadLocal on servlet threads,
+ * or, inside WebFlux requests, from {@link PerfLensWebClientCustomizer}.
  */
 public final class PerfLensWebClientObservationHandler implements ObservationHandler<ClientRequestObservationContext> {
     private static final String START = "perflens.start";
     private static final String WINDOW = "perflens.window";
 
     private final dev.perflens.autoconfigure.PerfLensRef perfLens;
+    private final PerfLensWebClientCustomizer reactiveWindows;
 
-    public PerfLensWebClientObservationHandler(ObjectProvider<PerfLens> perfLens) {
+    public PerfLensWebClientObservationHandler(ObjectProvider<PerfLens> perfLens, PerfLensWebClientCustomizer reactiveWindows) {
         this.perfLens = new dev.perflens.autoconfigure.PerfLensRef(perfLens);
+        this.reactiveWindows = reactiveWindows;
     }
 
     @Override
@@ -41,11 +43,13 @@ public final class PerfLensWebClientObservationHandler implements ObservationHan
 
     @Override
     public void onStop(ClientRequestObservationContext context) {
+        ClientRequest request = context.getRequest();
+        // claim first, so the pending entry is removed even when the call is not recorded
+        TraceWindow reactiveWindow = reactiveWindows.claim(request);
         PerfLens pl = perfLens.get();
         Long start = context.get(START);
         if (pl == null || !pl.isCollecting() || start == null || !pl.config().getHttp().isEnabled()) return;
         long end = System.nanoTime();
-        ClientRequest request = context.getRequest();
         String method = request == null ? "?" : request.method().name();
         URI uri = request == null ? null : request.url();
         String host = uri == null ? "?" : uri.getHost() + (uri.getPort() > 0 ? ":" + uri.getPort() : "");
@@ -53,7 +57,9 @@ public final class PerfLensWebClientObservationHandler implements ObservationHan
         int status = 0;
         ClientResponse response = context.getResponse();
         if (response != null) status = response.statusCode().value();
+        TraceWindow window = context.get(WINDOW);
+        if (window == null) window = reactiveWindow;
         pl.http().record(method, host, route, uri == null ? null : uri.toString(), status, context.getError(),
-                start, end, context.get(WINDOW));
+                start, end, window);
     }
 }

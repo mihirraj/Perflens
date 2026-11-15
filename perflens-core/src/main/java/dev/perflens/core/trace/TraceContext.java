@@ -5,6 +5,12 @@ package dev.perflens.core.trace;
  * hand-offs (@Async, CompletableFuture) start their own window at the first instrumented method.
  */
 public final class TraceContext {
+    /**
+     * Key of the current window in a Reactor {@code Context}. WebFlux requests are not bound to a
+     * thread, so the WebFilter publishes the window there instead of in the ThreadLocal.
+     */
+    public static final String REACTOR_KEY = "perflens.traceWindow";
+
     private static final ThreadLocal<TraceWindow> CURRENT = new ThreadLocal<>();
 
     private TraceContext() {}

@@ -25,14 +25,17 @@ public final class PerfLensConnectionFactoryPostProcessor implements BeanPostPro
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) {
         if (bean instanceof ConnectionFactory cf && !isProxy(cf)) {
-            return ProxyConnectionFactory.builder(cf).listener(new PerfLensR2dbcListener(perfLens)).build();
+            R2dbcTraceWindows windows = new R2dbcTraceWindows();
+            ConnectionFactory proxied = ProxyConnectionFactory.builder(cf)
+                    .listener(new PerfLensR2dbcListener(perfLens, windows)).build();
+            return new PerfLensConnectionFactory(proxied, windows);
         }
         return bean;
     }
 
-    /** Already an r2dbc-proxy (ours or the application's own): don't wrap twice. */
+    /** Already wrapped (by PerfLens, or by the application's own r2dbc-proxy): don't wrap twice. */
     private static boolean isProxy(ConnectionFactory cf) {
-        return Proxy.isProxyClass(cf.getClass()) && cf instanceof Wrapped<?>;
+        return cf instanceof PerfLensConnectionFactory || (Proxy.isProxyClass(cf.getClass()) && cf instanceof Wrapped<?>);
     }
 
     @Override

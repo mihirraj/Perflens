@@ -23,6 +23,11 @@ public final class SqlRegistry {
     private static final int CALLER_SAMPLE_UNTIL = 50;
     private static final int RAW_CACHE_LIMIT = 10_000;
     public static final String OVERFLOW = "[other statements: fingerprint cap reached]";
+    /**
+     * N+1 caller when no application frame is on the stack. Typical for R2DBC: the query runs when
+     * the pipeline is subscribed, after the application method that built it has returned.
+     */
+    public static final String NO_CALLER = "(no application frame on the stack)";
 
     public static final class SqlStat {
         public final String fingerprint;
@@ -107,9 +112,8 @@ public final class SqlRegistry {
         }
 
         TraceWindow.SqlRepeat repeat = window == null ? null : window.onSql(fp, micros);
-        boolean needRepeatCaller = repeat != null && repeat.caller == null
-                && repeat.count >= config.getSql().getNplusoneThreshold();
-        boolean needSampleParams = repeat != null && repeat.sampleParams.size() < TraceWindow.SAMPLE_PARAMS;
+        boolean needRepeatCaller = repeat != null && window.needsCaller(repeat, config.getSql().getNplusoneThreshold());
+        boolean needSampleParams = repeat != null && window.needsSampleParams(repeat);
 
         String caller = null;
         if (wantExemplar || needRepeatCaller || count <= CALLER_SAMPLE_UNTIL) {
@@ -122,11 +126,11 @@ public final class SqlRegistry {
                 }
             }
         }
-        if (needRepeatCaller) repeat.caller = caller == null ? "(no application frame on stack)" : caller;
+        if (needRepeatCaller) window.caller(repeat, caller == null ? NO_CALLER : caller);
 
         List<String> rendered = null;
         if (wantExemplar || needSampleParams) rendered = renderParams(stat, params.get());
-        if (needSampleParams) repeat.sampleParams.add(String.join(", ", rendered));
+        if (needSampleParams) window.addSampleParams(repeat, String.join(", ", rendered));
 
         if (wantExemplar) {
             Map<String, Object> d = new LinkedHashMap<>();

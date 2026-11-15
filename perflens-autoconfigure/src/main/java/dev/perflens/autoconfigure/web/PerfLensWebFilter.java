@@ -2,6 +2,7 @@ package dev.perflens.autoconfigure.web;
 
 import dev.perflens.autoconfigure.PerfLensRef;
 import dev.perflens.core.PerfLens;
+import dev.perflens.core.trace.TraceContext;
 import dev.perflens.core.trace.TraceWindow;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.Ordered;
@@ -15,8 +16,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * WebFlux counterpart of {@link PerfLensServletFilter}: per-route latency, errors and slowest
- * requests. The window is not thread-bound here (reactive code hops threads), so per-request SQL
- * and HTTP attribution are not available for WebFlux yet.
+ * requests. Reactive code hops threads, so the window travels in the Reactor context instead of
+ * a ThreadLocal; R2DBC queries and WebClient calls made for the request are attributed to it.
  */
 public final class PerfLensWebFilter implements WebFilter, Ordered {
     private static final String BEST_MATCHING_PATTERN = "org.springframework.web.reactive.HandlerMapping.bestMatchingPattern";
@@ -44,7 +45,9 @@ public final class PerfLensWebFilter implements WebFilter, Ordered {
                     w.entrypoint(method + " " + (pattern != null ? pattern.toString() : "[unmapped] " + path));
                     HttpStatusCode status = exchange.getResponse().getStatusCode();
                     pl.traces().complete(w, failed.get() || (status != null && status.is5xxServerError()));
-                });
+                })
+                // R2DBC connections and WebClient calls made for this request read the window from here
+                .contextWrite(ctx -> ctx.put(TraceContext.REACTOR_KEY, w));
     }
 
     @Override

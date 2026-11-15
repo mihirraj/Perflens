@@ -111,23 +111,21 @@ public final class TraceRegistry {
 
     private void detectNPlusOne(TraceWindow w, String entrypoint) {
         int threshold = config.getSql().getNplusoneThreshold();
-        for (Map.Entry<String, TraceWindow.SqlRepeat> e : w.sqlRepeats().entrySet()) {
-            TraceWindow.SqlRepeat r = e.getValue();
-            if (r.count < threshold) continue;
-            String key = entrypoint + '\u0000' + e.getKey();
+        for (TraceWindow.Repeat r : w.repeatsAtLeast(threshold)) {
+            String key = entrypoint + '\u0000' + r.fingerprint();
             NPlusOneStat s = nPlusOne.get(key);
             if (s == null) {
                 if (nPlusOne.size() >= MAX_NPLUSONE) continue;
-                s = nPlusOne.computeIfAbsent(key, k -> new NPlusOneStat(entrypoint, e.getKey()));
+                s = nPlusOne.computeIfAbsent(key, k -> new NPlusOneStat(entrypoint, r.fingerprint()));
             }
             synchronized (s) {
                 s.requests++;
-                s.totalRepeats += r.count;
-                s.totalMicros += r.micros;
-                if (r.count >= s.maxRepeats) {
-                    s.maxRepeats = r.count;
-                    s.caller = r.caller;
-                    s.sampleParams = List.copyOf(r.sampleParams);
+                s.totalRepeats += r.count();
+                s.totalMicros += r.micros();
+                if (r.count() >= s.maxRepeats) {
+                    s.maxRepeats = r.count();
+                    s.caller = r.caller();
+                    s.sampleParams = r.sampleParams();
                 }
             }
         }
