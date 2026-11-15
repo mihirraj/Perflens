@@ -14,6 +14,10 @@
     <description>Sample app with deliberate bottlenecks: N+1, slow query, hot method, sequential HTTP calls, failing dependency.</description>
 
     <properties>
+        <!-- not published: excluded from the Central bundle, so skip the release plugins too -->
+        <maven.source.skip>true</maven.source.skip>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+        <gpg.skip>true</gpg.skip>
         <maven.deploy.skip>true</maven.deploy.skip>
     </properties>
 

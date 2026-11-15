@@ -11,6 +11,7 @@
 
     <artifactId>perflens-autoconfigure</artifactId>
     <name>PerfLens Auto-configuration</name>
+    <description>Spring Boot auto-configuration: JDBC/R2DBC proxies, method advisor, web filters, HTTP client observation, actuator endpoint and UI.</description>
 
     <dependencies>
         <dependency>
