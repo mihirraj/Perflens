@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /** Aggregates every JDBC statement by fingerprint, keeping the slowest executions with real params. */
 public final class SqlRegistry {
@@ -75,6 +76,15 @@ public final class SqlRegistry {
      */
     public void record(String sql, long micros, boolean success, List<Object> params, int batchSize,
                        TraceWindow window) {
+        record(sql, micros, success, () -> params, batchSize, window);
+    }
+
+    /**
+     * Same as {@link #record(String, long, boolean, List, int, TraceWindow)}, but extracts the bind
+     * values only when this execution is kept as an exemplar or N+1 sample, which is rare.
+     */
+    public void record(String sql, long micros, boolean success, Supplier<List<Object>> params, int batchSize,
+                       TraceWindow window) {
         String fp = fingerprint(sql);
         SqlStat stat = stats.get(fp);
         if (stat == null) {
@@ -115,7 +125,7 @@ public final class SqlRegistry {
         if (needRepeatCaller) repeat.caller = caller == null ? "(no application frame on stack)" : caller;
 
         List<String> rendered = null;
-        if (wantExemplar || needSampleParams) rendered = renderParams(stat, params);
+        if (wantExemplar || needSampleParams) rendered = renderParams(stat, params.get());
         if (needSampleParams) repeat.sampleParams.add(String.join(", ", rendered));
 
         if (wantExemplar) {

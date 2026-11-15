@@ -71,9 +71,11 @@ class OverheadBenchmark {
         ConfigurableApplicationContext ctx = new SpringApplicationBuilder(ShopApplication.class).properties(
                 "server.port=0", "demo.load.enabled=false", "perflens.enabled=" + perflens,
                 "perflens.storage.enabled=false", "logging.level.root=WARN",
-                "spring.datasource.url=jdbc:h2:mem:bench" + run + ";DB_CLOSE_DELAY=-1",
-                // extra PerfLens settings for the 'on' runs, e.g. -Dbench.on=perflens.jfr.enabled=false
-                perflens ? System.getProperty("bench.on", "perflens.enabled=true") : "perflens.enabled=false").run();
+                "spring.datasource.url=jdbc:h2:mem:bench" + run + ";DB_CLOSE_DELAY=-1")
+                // extra PerfLens settings for the 'on' runs, ';'-separated,
+                // e.g. -Dbench.on="perflens.jfr.enabled=false;perflens.sql.enabled=false"
+                .properties(perflens ? System.getProperty("bench.on", "perflens.enabled=true").split(";") : new String[0])
+                .run();
         try {
             String base = "http://localhost:" + ctx.getEnvironment().getProperty("local.server.port");
             HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();

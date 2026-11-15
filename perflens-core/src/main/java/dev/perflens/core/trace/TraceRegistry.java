@@ -134,6 +134,7 @@ public final class TraceRegistry {
     }
 
     private void detectWaterfall(TraceWindow w, String entrypoint, long requestMicros) {
+        if (w.httpCount() < config.getHttp().getWaterfallMinCalls()) return;
         List<TraceWindow.HttpCall> calls = new ArrayList<>(w.httpCalls());
         if (calls.size() < config.getHttp().getWaterfallMinCalls()) return;
         calls.sort(Comparator.comparingLong(TraceWindow.HttpCall::startNanos));

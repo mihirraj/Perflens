@@ -36,8 +36,8 @@ final class PerfLensQueryListener implements QueryExecutionListener {
         for (QueryInfo q : queryInfoList) {
             List<List<ParameterSetOperation>> sets = q.getParametersList();
             int batchSize = execInfo.isBatch() ? Math.max(sets.size(), queryInfoList.size()) : 1;
-            List<Object> params = sets.isEmpty() ? List.of() : values(sets.get(0));
-            pl.sql().record(q.getQuery(), each, execInfo.isSuccess(), params, batchSize, TraceContext.current());
+            pl.sql().record(q.getQuery(), each, execInfo.isSuccess(),
+                    () -> sets.isEmpty() ? List.of() : values(sets.get(0)), batchSize, TraceContext.current());
         }
     }
 

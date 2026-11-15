@@ -38,8 +38,8 @@ final class PerfLensR2dbcListener implements ProxyExecutionListener {
             List<Bindings> sets = q.getBindingsList();
             boolean batch = exec.getType() == io.r2dbc.proxy.core.ExecutionType.BATCH;
             int batchSize = batch ? Math.max(exec.getBatchSize(), queries.size()) : Math.max(1, sets.size());
-            List<Object> params = sets.isEmpty() ? List.of() : values(sets.get(0));
-            pl.sql().record(q.getQuery(), each, exec.isSuccess(), params, batchSize, TraceContext.current());
+            pl.sql().record(q.getQuery(), each, exec.isSuccess(),
+                    () -> sets.isEmpty() ? List.of() : values(sets.get(0)), batchSize, TraceContext.current());
         }
     }
 
