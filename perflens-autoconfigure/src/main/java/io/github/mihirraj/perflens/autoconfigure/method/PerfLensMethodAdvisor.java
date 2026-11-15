@@ -32,6 +32,8 @@ import java.util.List;
  * When no trace window is open (scheduled jobs, listeners, async), the call opens one.
  */
 public final class PerfLensMethodAdvisor extends AbstractPointcutAdvisor {
+    /** The instrumented method currently running on this thread: the direct caller of the next one. */
+    private static final ThreadLocal<MethodRegistry.MethodStat> CURRENT_METHOD = new ThreadLocal<>();
     private final transient PerfLensRef perfLens;
     private final transient Pointcut pointcut;
     private final transient Advice advice;
@@ -123,6 +125,8 @@ public final class PerfLensMethodAdvisor extends AbstractPointcutAdvisor {
             window = opened;
         }
         MethodRegistry.Before before = MethodRegistry.Before.of(window);
+        MethodRegistry.MethodStat caller = CURRENT_METHOD.get();
+        if (stat != null) CURRENT_METHOD.set(stat);
         Throwable error = null;
         long t0 = System.nanoTime();
         try {
@@ -132,8 +136,9 @@ public final class PerfLensMethodAdvisor extends AbstractPointcutAdvisor {
             throw t;
         } finally {
             long micros = (System.nanoTime() - t0) / 1000;
+            if (stat != null) CURRENT_METHOD.set(caller);
             try {
-                if (stat != null) pl.methods().record(stat, micros, error, inv.getArguments(), before, window);
+                if (stat != null) pl.methods().record(stat, micros, error, inv.getArguments(), before, window, caller);
                 if (opened != null) pl.traces().complete(opened, error != null);
             } finally {
                 if (opened != null) TraceContext.close(opened);

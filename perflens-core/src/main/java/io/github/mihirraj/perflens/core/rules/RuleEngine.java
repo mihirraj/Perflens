@@ -219,12 +219,14 @@ public final class RuleEngine {
                 }
             }
         }
-        // A thin wrapper (controller -> service) has the same call count and ~the same total time as the
-        // method it delegates to. Report only the inner method and name the wrapper as its caller.
+        // A thin wrapper (controller -> service) calls the method it delegates to, with the same call count
+        // and ~the same total time. Report only the inner method and name the wrapper as its caller. The
+        // call relationship is required: unrelated methods can match on count and time by coincidence.
         Map<Candidate, String> wrappers = new HashMap<>();
         for (Candidate outer : slow) {
             for (Candidate inner : slow) {
-                if (inner != outer && inner.count() == outer.count() && inner.sum() <= outer.sum()
+                if (inner != outer && inner.s().calledDirectlyBy(outer.s().key)
+                        && inner.count() == outer.count() && inner.sum() <= outer.sum()
                         && inner.sum() >= outer.sum() * 0.97 && !wrappers.containsKey(inner)) {
                     wrappers.put(outer, inner.s().key);
                     break;

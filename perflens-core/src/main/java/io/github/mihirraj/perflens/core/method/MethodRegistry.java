@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
  * and a breakdown of how much of that call was spent in SQL and outbound HTTP.
  */
 public final class MethodRegistry {
+    private static final int MAX_DIRECT_CALLERS = 16;
 
     public static final class MethodStat {
         /** "com.acme.OrderService.price" (joins with JFR hot-method frames). */
@@ -31,6 +33,13 @@ public final class MethodRegistry {
         public final Histogram latency = new Histogram();
         public final TopK slowest;
         public long errors;
+        /** Keys of the instrumented methods seen calling this one directly (on the same thread). */
+        private final Set<String> directCallers = ConcurrentHashMap.newKeySet();
+
+        /** True if {@code callerKey} was seen calling this method directly. */
+        public boolean calledDirectlyBy(String callerKey) {
+            return directCallers.contains(callerKey);
+        }
 
         MethodStat(Class<?> targetClass, Method m, int exemplars) {
             this.key = targetClass.getName() + "." + m.getName();
@@ -76,10 +85,19 @@ public final class MethodRegistry {
                 m -> new MethodStat(targetClass, m, config.getCapture().getExemplarsPerItem()));
     }
 
-    public void record(MethodStat stat, long micros, Throwable error, Object[] args, Before before, TraceWindow w) {
+    /**
+     * @param caller the instrumented method this call was made from on the same thread, or null;
+     *               lets the slow-method rule tell a real wrapper from an unrelated method that
+     *               happens to have the same call count and total time
+     */
+    public void record(MethodStat stat, long micros, Throwable error, Object[] args, Before before, TraceWindow w,
+                       MethodStat caller) {
         synchronized (stat) {
             stat.latency.record(micros);
             if (error != null) stat.errors++;
+        }
+        if (caller != null && stat.directCallers.size() < MAX_DIRECT_CALLERS && !stat.directCallers.contains(caller.key)) {
+            stat.directCallers.add(caller.key);
         }
         double ms = micros / 1000.0;
         if (micros < exemplarMinMicros || !stat.slowest.accepts(ms)) return;
